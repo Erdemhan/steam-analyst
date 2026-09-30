@@ -14,7 +14,7 @@ in isolation without a full Streamlit app context.
 
 import sqlite3
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 import pandas as pd
@@ -144,11 +144,27 @@ class TestRenderAnalysisDetailPage:
         st.query_params.clear()
 
         with patch("streamlit.header"), patch("streamlit.info") as mock_info, patch(
-            "streamlit.button"
+            "streamlit.button", return_value=False
         ):
             render_analysis_detail_page(mock_conn, mock_settings)
 
             mock_info.assert_called()
+
+    def test_go_to_past_analyses_button_switches_page(self, mock_settings):
+        """The 'Go to Past Analyses' button navigates to the registered past page."""
+        from steam_analyst.ui import pages as ui_pages
+
+        mock_conn = Mock(spec=sqlite3.Connection)
+        st.query_params.clear()
+        past_page = Mock(name="past_page")
+        ui_pages.register_nav_pages({"past": past_page})
+
+        with patch("streamlit.header"), patch("streamlit.info"), patch(
+            "streamlit.button", return_value=True
+        ), patch("streamlit.switch_page") as mock_switch:
+            render_analysis_detail_page(mock_conn, mock_settings)
+
+        mock_switch.assert_called_once_with(past_page)
 
     def test_unknown_run_id_shows_empty_state(self, mock_settings):
         """Unknown run_id shows empty state without raising exception."""
@@ -162,7 +178,7 @@ class TestRenderAnalysisDetailPage:
             )
 
             with patch("streamlit.header"), patch("streamlit.warning") as mock_warning, patch(
-                "streamlit.button"
+                "streamlit.button", return_value=False
             ):
                 render_analysis_detail_page(mock_conn, mock_settings)
 
@@ -188,6 +204,55 @@ class TestRenderAnalysisDetailPage:
                 "steam_analyst.ui.pages.render_caveat_panel"
             ):
                 render_analysis_detail_page(mock_conn, mock_settings)
+
+
+class TestCaseStudyRendering:
+    """Case studies render using the real CaseStudy field names."""
+
+    def test_real_case_study_renders_without_attribute_errors(self):
+        from steam_analyst.reporting.case_studies import CaseStudy
+
+        case_study = CaseStudy(
+            appid=553850,
+            name="Example Game",
+            developer="Example Dev",
+            release_date="Feb 8, 2024",
+            price_usd=39.99,
+            review_count=634411,
+            review_positive_pct=0.81,
+            estimated_sales_band=(1000.0, 2000.0, 3000.0),
+            estimated_revenue_net_usd=float("nan"),
+            complexity_score=0.48,
+            top_tags=["Action", "Co-op"],
+            archetype_label="Archetype 1",
+            rationale="Example rationale.",
+            complexity_drivers=[("install_size", 0.15)],
+            store_url="https://store.steampowered.com/app/553850/",
+        )
+        report = Mock(spec=reporting.RunReport)
+        report.is_partial = False
+        report.run = Mock(status="succeeded")
+        report.caveats = []
+        report.funnel = Mock(candidate_count=5, simple_subset_size=3, catalog_size=100)
+        report.case_studies = [case_study]
+        st.query_params["run_id"] = "test-run-id"
+
+        with patch("steam_analyst.ui.pages.reporting") as mock_reporting_module, patch(
+            "steam_analyst.ui.pages.render_caveat_panel"
+        ), patch("streamlit.header"), patch("streamlit.divider"), patch(
+            "streamlit.subheader"
+        ), patch("streamlit.dataframe"), patch("streamlit.metric"), patch(
+            "streamlit.columns", return_value=[MagicMock(), MagicMock(), MagicMock()]
+        ), patch("streamlit.expander") as mock_expander, patch(
+            "streamlit.write"
+        ) as mock_write, patch("streamlit.markdown"):
+            mock_reporting_module.load_run_report.return_value = report
+            render_analysis_detail_page(Mock(spec=sqlite3.Connection), Mock())
+
+        mock_expander.assert_called_once_with("Example Game (appid=553850)")
+        written = " ".join(str(c.args[0]) for c in mock_write.call_args_list)
+        assert "%81 olumlu" in written
+        assert "bilinmiyor" in written
 
 
 class TestSessionKeysDiscipline:

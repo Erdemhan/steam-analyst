@@ -64,9 +64,9 @@ class TestBuildNavigation:
             page_calls = mock_page_class.call_args_list
             titles = [call_obj.kwargs.get("title") for call_obj in page_calls]
 
-            assert "Run New Analysis" in titles
-            assert "Past Analyses" in titles
-            assert "Analysis Detail" in titles
+            assert "Yeni analiz" in titles
+            assert "Geçmiş analizler" in titles
+            assert "Analiz ayrıntısı" in titles
 
     def test_build_navigation_pages_have_correct_url_paths(
         self, mock_settings: Mock
@@ -512,7 +512,7 @@ class TestMain:
 
             mock_error.assert_called_once()
             call_args = mock_error.call_args[0][0]
-            assert "Startup failed" in call_args
+            assert "Başlatma hatası" in call_args
 
 
 class TestPageAdapterPattern:

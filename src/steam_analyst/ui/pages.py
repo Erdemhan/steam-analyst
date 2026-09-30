@@ -25,6 +25,145 @@ from steam_analyst.config import Settings
 from steam_analyst import orchestration, reporting, storage
 from .session import SESSION_KEYS
 
+_NAV_PAGES: dict[str, st.Page] = {}
+
+
+def register_nav_pages(pages: dict[str, st.Page]) -> None:
+    """Store the st.Page objects built by the navigation so pages can switch to each other."""
+    _NAV_PAGES.clear()
+    _NAV_PAGES.update(pages)
+
+
+_STATUS_TR = {
+    "pending": "bekliyor",
+    "running": "çalışıyor",
+    "succeeded": "tamamlandı",
+    "failed": "başarısız",
+    "cancelled": "iptal edildi",
+}
+
+_STAGE_TR = {
+    "acquisition": "Veri toplama",
+    "enrichment": "Zenginleştirme",
+    "analysis": "Analiz",
+}
+
+_COLUMN_TR = {
+    "Cluster ID": "Küme no",
+    "Archetype": "Arketip",
+    "N": "Oyun sayısı",
+    "Demand (z)": "Talep (z)",
+    "Competition (z)": "Rekabet (z)",
+    "Simplicity (z)": "Basitlik (z)",
+    "Opportunity Score": "Fırsat skoru",
+    "Est. Sales (band mid)": "Tahmini satış (orta)",
+    "Complexity": "Karmaşıklık",
+    "Releases in Window": "Penceredeki çıkışlar",
+    "Tag": "Etiket",
+    "Positive %": "Olumlu oran",
+    "Price ($)": "Fiyat ($)",
+}
+
+# Turkish display text for the fixed caveats, keyed by Caveat.key. Unknown keys
+# (e.g. the partial-run caveat) fall back to the text supplied by reporting.
+_CAVEATS_TR = {
+    "steamspy_owner_confidence": (
+        "SteamSpy sahip sayısı tahminleri",
+        "SteamSpy sahip sayısı tahminleri düşük güvenilirliklidir. Valve 2018'de profil "
+        "verilerini kısıtladığı için bu rakamlar o tarihten beri model tahminidir. "
+        "Sadece kaba bir sıralama sinyali olarak kullanın, asla kesin veri sanmayın.",
+    ),
+    "boxleiter_approximation": (
+        "Boxleiter satış çarpanı",
+        "Boxleiter çarpanı bir yaklaşımdır. Yorum-satış oranı tür, fiyat, çıkış yılı, "
+        "bölgesel dağılım ve yorum isteme davranışına göre değişir. Buradaki tür bazlı "
+        "aralık belgelenmiş bir varsayımdır, doğrulanmış bir dönüşüm oranı değildir. "
+        "Gelir rakamları büyüklük mertebesi göstergesidir.",
+    ),
+    "simplicity_proxy": (
+        "Karmaşıklık kapsamın vekilidir",
+        "'Basit' kavramı emeğin değil kapsamın bir vekilidir. Metaveri sanat kalitesini, "
+        "oynanış cilasını, pazarlama harcamasını veya kaç prototip denendiğini göremez. "
+        "Düşük karmaşıklık skorlu bir oyun yine de bir yıllık emek gerektirmiş olabilir. "
+        "Vaka çalışmaları 'kapsamca küçük olması muhtemel ve ticari olarak başarılı' "
+        "şeklinde okunmalıdır, 'bu iki haftada yapıldı' şeklinde değil.",
+    ),
+    "no_scraping_demand_gap": (
+        "Eksik talep sinyalleri",
+        "Scraping yapılmadığı için bazı talep sinyalleri eksiktir. İstek listesi sayıları, "
+        "geçmiş oyuncu sayıları ve fiyat geçmişi resmi uç noktalardan alınamaz. Bu yüzden "
+        "'talep' yalnızca yorum hacmi ve sahip sayısı tahminlerinden türetilir.",
+    ),
+    "survivorship_bias": (
+        "Hayatta kalma yanlılığı",
+        "Katalog yalnızca yayımlanmış ve hâlâ satışta olan oyunları içerir. Satıştan "
+        "kaldırılan başarısız oyunlar ve yarım bırakılan projeler yoktur. Bu durum her "
+        "arketipin görünen başarı oranını şişirir.",
+    ),
+    "competition_historical": (
+        "Rekabet geçmişe dayanır",
+        "Rekabet yoğunluğu geçmiş çıkışlar üzerinden ölçülür. Tamamlanmış bir oyunun "
+        "girdiği pazarı anlatır, bugün başlayan bir oyunun çıkacağı pazarı değil.",
+    ),
+    "coarse_filter_boundary": (
+        "Kaba filtre sert bir sınırdır",
+        "Kaba filtre sert bir sınırdır. Veri toplama aşamasında elenen hiçbir oyun sonraki "
+        "aşamalarda görünmez. Sınırın görünür kalması için her elenme nedeninin sayısı "
+        "analiz bazında saklanır.",
+    ),
+    "boxleiter_accuracy_limit": (
+        "Boxleiter doğruluk sınırı",
+        "Gamalytic testine göre, yalnızca yorum çarpanı yöntemiyle oyunların sadece yaklaşık "
+        "%43'ü gerçek satışlarının ±%30 aralığına düşüyor. Tahmini satışları bir nokta "
+        "tahmini olarak değil, sıralama sinyali olarak kullanın.",
+    ),
+}
+
+
+def _status_tr(status: str) -> str:
+    return _STATUS_TR.get(status, status)
+
+
+def _stage_tr(stage: str) -> str:
+    return _STAGE_TR.get(stage, stage)
+
+
+def _localize_columns(df):
+    """Rename known display columns to Turkish; unknown columns are left as-is."""
+    try:
+        return df.rename(columns=_COLUMN_TR)
+    except AttributeError:
+        return df
+
+
+def _format_duration(seconds: float) -> str:
+    total = int(seconds)
+    hours, rem = divmod(total, 3600)
+    minutes, secs = divmod(rem, 60)
+    if hours:
+        return f"{hours} sa {minutes} dk {secs} sn"
+    if minutes:
+        return f"{minutes} dk {secs} sn"
+    return f"{secs} sn"
+
+
+def _run_duration_text(run_row, stages) -> str | None:
+    """Duration from runs.finished_at, falling back to stage timestamps for older rows."""
+    from datetime import datetime
+
+    try:
+        if run_row["finished_at"]:
+            started = datetime.fromisoformat(run_row["started_at"])
+            finished = datetime.fromisoformat(run_row["finished_at"])
+            return _format_duration((finished - started).total_seconds())
+    except (TypeError, ValueError):
+        pass
+    starts = [s.started_at for s in stages if s.started_at]
+    ends = [s.finished_at for s in stages if s.finished_at]
+    if starts and ends:
+        return _format_duration((max(ends) - min(starts)).total_seconds())
+    return None
+
 
 def render_caveat_panel(caveats: Sequence[reporting.Caveat]) -> None:
     """Render a fixed expander listing every caveat.
@@ -42,14 +181,15 @@ def render_caveat_panel(caveats: Sequence[reporting.Caveat]) -> None:
     """
     severity_icons = {"info": "ℹ️", "warning": "⚠️", "error": "❌"}
     caveat_count = len(caveats)
-    with st.expander(f"Methodology notes and limitations ({caveat_count})"):
+    with st.expander(f"Yöntem notları ve sınırlılıklar ({caveat_count})"):
         if not caveats:
-            st.write("No caveats to display.")
+            st.write("Gösterilecek not yok.")
         else:
             for caveat in caveats:
                 icon = severity_icons.get(caveat.severity, "ℹ️")
-                st.write(f"**{icon} {caveat.title}**")
-                st.write(caveat.body)
+                title, body = _CAVEATS_TR.get(caveat.key, (caveat.title, caveat.body))
+                st.write(f"**{icon} {title}**")
+                st.write(body)
 
 
 def render_new_analysis_page(conn: sqlite3.Connection, settings: Settings) -> None:
@@ -73,16 +213,16 @@ def render_new_analysis_page(conn: sqlite3.Connection, settings: Settings) -> No
         - If st.session_state['active_run_id'] is set, render_progress_panel
           is called below the form.
     """
-    st.header("Run New Analysis")
+    st.header("Yeni analiz başlat")
 
     # Display parameters_version read-only
     from steam_analyst.config.parameters import parameters_version
 
     current_version = parameters_version(settings.parameters_path)
     st.info(
-        f"**Parameters version:** {current_version}\n\n"
-        "All parameter values are defined in FORMULATION.md and cannot be edited "
-        "from this UI. Only the run-specific overrides below may be customized."
+        f"**Parametre sürümü:** {current_version}\n\n"
+        "Formül sabitleri FORMULATION.md dosyasında kilitlidir ve bu arayüzden "
+        "değiştirilemez. Aşağıda yalnızca bu analize özel ayarlar var."
     )
 
     # Check if a run is already active
@@ -90,37 +230,55 @@ def render_new_analysis_page(conn: sqlite3.Connection, settings: Settings) -> No
     can_start = len(active_runs) == 0
 
     # Form for PipelineConfig fields
-    st.subheader("Configuration")
+    st.subheader("Ayarlar")
     with st.form("new_analysis_form"):
         max_catalog_pages = st.number_input(
-            "Max Catalog Pages (optional)",
+            "Katalog sayfa sınırı (isteğe bağlı)",
             min_value=1,
             value=None,
-            help="Limit catalog fetch to this many pages (for smoke tests)",
+            help=(
+                "Steam kataloğundan en fazla kaç sayfa çekileceğini belirler. "
+                "Her sayfa yaklaşık 1000 uygulama içerir.\n\n"
+                "Boş bırakırsanız tüm katalog taranır. Bu, API hızına bağlı olarak "
+                "saatler sürebilir.\n\n"
+                "Hızlı deneme için 1-3 girin. Analiz çok daha kısa sürer, ama "
+                "az sayfa, az aday demektir. Bu sonuçlar yalnızca hattın çalıştığını "
+                "görmek için uygundur, güvenilir bir fırsat analizi için yetersizdir."
+            ),
         )
         request_budget_override = st.number_input(
-            "Request Budget Override (optional)",
+            "İstek bütçesi (isteğe bağlı)",
             min_value=1,
             value=None,
-            help="Override the request budget limit",
+            help=(
+                "Bu analizde Steam ve SteamSpy'a atılacak toplam API isteği için "
+                "üst sınırdır. Sınıra ulaşılınca analiz kalan işi yapmadan durur.\n\n"
+                "Boş bırakırsanız ayar dosyasındaki varsayılan bütçe kullanılır.\n\n"
+                "Düşük değer süreyi ve API yükünü sınırlar, ama daha az aday "
+                "işlenir. İlk tam taramada varsayılanı değiştirmemeniz önerilir."
+            ),
         )
         notes = st.text_area(
-            "Notes (optional)",
+            "Not (isteğe bağlı)",
             value="",
-            help="Internal notes for this run",
+            help=(
+                "Bu analiz için kendinize not. Sonuçları etkilemez, yalnızca kayıtla "
+                "birlikte saklanır. Örneğin hangi ayarı neden denediğinizi yazabilirsiniz."
+            ),
         )
 
         start_disabled_reason = None
         if not can_start:
             start_disabled_reason = (
-                f"A run is already active (ADR-001 supports only one writer). "
-                f"Wait for it to finish or cancel it from the Past Analyses page."
+                "Zaten çalışan bir analiz var (aynı anda yalnızca bir analiz "
+                "çalışabilir). Bitmesini bekleyin ya da iptal edin."
             )
 
         submitted = st.form_submit_button(
-            "Start New Analysis",
+            "Analizi başlat",
             disabled=not can_start,
-            help=start_disabled_reason or "Start the acquisition pipeline",
+            help=start_disabled_reason
+            or "Veri toplama, zenginleştirme ve analiz adımlarını sırayla başlatır.",
         )
 
         if submitted and can_start:
@@ -145,9 +303,9 @@ def render_new_analysis_page(conn: sqlite3.Connection, settings: Settings) -> No
                 st.session_state["last_event_id"] = 0
                 st.session_state["event_log"] = []
 
-                st.success(f"Started run: {run_id}")
+                st.success(f"Analiz başlatıldı: {run_id}")
             except Exception as e:
-                st.error(f"Failed to start pipeline: {e}")
+                st.error(f"Analiz başlatılamadı: {e}")
 
     # Render progress panel if a run is active
     if st.session_state.get("active_run_id"):
@@ -183,7 +341,7 @@ def render_progress_panel(db_path: Path, run_id: str) -> None:
         with storage.connect(db_path) as conn:
             run = storage.get_run(conn, run_id)
             if run is None:
-                st.warning(f"Run {run_id} no longer found in database.")
+                st.warning(f"{run_id} kaydı veritabanında bulunamadı.")
                 return
 
             stages = storage.read_run_stages(conn, run_id)
@@ -197,32 +355,31 @@ def render_progress_panel(db_path: Path, run_id: str) -> None:
             st.session_state["last_event_id"] = new_events[-1].event_id
 
     except Exception as e:
-        st.error(f"Error reading run progress: {e}")
+        st.error(f"İlerleme okunamadı: {e}")
         return
 
     # Render stage status
-    st.subheader("Pipeline Progress")
-    stage_names = {"acquisition": "Acquisition", "enrichment": "Enrichment", "analysis": "Analysis"}
+    st.subheader("İlerleme")
     for stage in stages:
         status_emoji = {"pending": "⏳", "running": "▶️", "succeeded": "✅", "failed": "❌"}[
             stage.status
         ]
-        st.write(f"{status_emoji} {stage_names.get(stage.stage, stage.stage)}: {stage.status}")
+        st.write(f"{status_emoji} {_stage_tr(stage.stage)}: {_status_tr(stage.status)}")
 
     # Render latest progress from event log
     if st.session_state["event_log"]:
         latest_event = st.session_state["event_log"][-1]
         if latest_event.progress_value is not None:
-            st.info(f"**Latest Progress:** {latest_event.progress_value}")
+            st.info(f"**Son ilerleme:** {latest_event.progress_value}")
 
     # Render recent events (with bounded tail for long runs)
-    st.subheader("Event Log")
+    st.subheader("Olay günlüğü")
     event_log = st.session_state["event_log"]
     if len(event_log) > 20:
-        with st.expander(f"Full log ({len(event_log)} events)"):
+        with st.expander(f"Tüm günlük ({len(event_log)} olay)"):
             for event in event_log:
                 st.write(f"{event.event_id}: {event.message}")
-        st.write("**Recent events (last 20):**")
+        st.write("**Son olaylar (son 20):**")
         for event in event_log[-20:]:
             st.write(f"{event.event_id}: {event.message}")
     else:
@@ -233,20 +390,20 @@ def render_progress_panel(db_path: Path, run_id: str) -> None:
     col1, col2 = st.columns(2)
     with col1:
         if st.button(
-            "Cancel Run",
+            "Analizi iptal et",
             disabled=st.session_state["_cancel_requested"],
             key="cancel_button",
         ):
             st.session_state["_cancel_requested"] = True
             try:
                 orchestration.cancel_run(run_id)
-                st.info("Cancellation requested. The run may take a moment to stop.")
+                st.info("İptal istendi. Analizin durması birkaç saniye sürebilir.")
             except Exception as e:
-                st.error(f"Failed to cancel run: {e}")
+                st.error(f"İptal edilemedi: {e}")
 
     # Check if terminal status reached
     if run.status in ("succeeded", "failed", "cancelled"):
-        st.success(f"Run finished with status: {run.status}")
+        st.success(f"Analiz bitti. Durum: {_status_tr(run.status)}")
         st.rerun()
 
 
@@ -262,20 +419,20 @@ def render_past_analyses_page(conn: sqlite3.Connection, settings: Settings) -> N
         - Per row: Open (sets query_params['run_id']), Resume (only for non-succeeded,
           non-active runs), Delete (with 2-step confirmation).
     """
-    st.header("Past Analyses")
+    st.header("Geçmiş analizler")
 
     try:
         runs_df = storage.list_runs(conn, limit=50)
     except Exception as e:
-        st.error(f"Failed to load runs: {e}")
+        st.error(f"Analizler yüklenemedi: {e}")
         return
 
     if runs_df.empty:
-        st.info("No runs found.")
+        st.info("Henüz analiz yok.")
         return
 
     # Display the runs table
-    st.subheader("Runs")
+    st.subheader("Analizler")
     active_run_ids = orchestration.active_run_ids()
 
     for idx, row in runs_df.iterrows():
@@ -284,28 +441,43 @@ def render_past_analyses_page(conn: sqlite3.Connection, settings: Settings) -> N
             col1, col2, col3 = st.columns([3, 2, 2])
 
             with col1:
-                st.write(f"**Run ID:** {run_id}")
-                st.write(f"**Started:** {row['started_at']}")
-                st.write(f"**Status:** {row['status']}")
+                st.write(f"**Analiz no:** {run_id}")
+                st.write(f"**Başlangıç:** {row['started_at']}")
+                st.write(f"**Durum:** {_status_tr(row['status'])}")
                 if "candidate_count" in row and row["candidate_count"]:
-                    st.write(f"**Candidates:** {row['candidate_count']}")
+                    st.write(f"**Aday sayısı:** {row['candidate_count']}")
 
             with col2:
-                st.write("**Stages:**")
-                if "stage_completion" in row and row["stage_completion"]:
-                    st.write(row["stage_completion"])
-                if "duration" in row and row["duration"]:
-                    st.write(f"**Duration:** {row['duration']}")
+                st.write("**Aşamalar:**")
+                stages = storage.read_run_stages(conn, run_id)
+                if stages:
+                    for stage in stages:
+                        st.write(f"{_stage_tr(stage.stage)}: {_status_tr(stage.status)}")
+                else:
+                    st.write("Hiçbir aşama başlamadı.")
+                duration_text = _run_duration_text(row, stages)
+                if duration_text:
+                    st.write(f"**Süre:** {duration_text}")
 
             with col3:
-                st.write("**Actions:**")
+                st.write("**İşlemler:**")
                 # Open button
-                if st.button("Open", key=f"open_{run_id}"):
-                    st.query_params["run_id"] = run_id
+                if st.button(
+                    "Aç",
+                    key=f"open_{run_id}",
+                    help="Sonuçları ayrıntılı sayfada gösterir.",
+                ):
+                    st.switch_page(
+                        _NAV_PAGES["detail"], query_params={"run_id": run_id}
+                    )
 
                 # Resume button (only for non-succeeded, non-active runs)
                 if row["status"] != "succeeded" and run_id not in active_run_ids:
-                    if st.button("Resume", key=f"resume_{run_id}"):
+                    if st.button(
+                        "Devam et",
+                        key=f"resume_{run_id}",
+                        help="Yarım kalan analizi kaldığı aşamadan sürdürür.",
+                    ):
                         try:
                             resume_run_id = orchestration.resume_run(
                                 settings.db_path, run_id, settings=settings
@@ -313,9 +485,9 @@ def render_past_analyses_page(conn: sqlite3.Connection, settings: Settings) -> N
                             st.session_state["active_run_id"] = resume_run_id
                             st.session_state["last_event_id"] = 0
                             st.session_state["event_log"] = []
-                            st.success(f"Resumed run: {resume_run_id}")
+                            st.success(f"Analiz sürdürülüyor: {resume_run_id}")
                         except orchestration.PipelineError as e:
-                            st.warning(f"Failed to resume: {e}")
+                            st.warning(f"Devam ettirilemedi: {e}")
 
                 # Delete button with confirmation
                 delete_key = f"delete_{run_id}"
@@ -327,27 +499,31 @@ def render_past_analyses_page(conn: sqlite3.Connection, settings: Settings) -> N
                     st.session_state[confirm_key] = False
 
                 if not st.session_state[delete_key]:
-                    if st.button("Delete", key=f"delete_btn_{run_id}"):
+                    if st.button(
+                        "Sil",
+                        key=f"delete_btn_{run_id}",
+                        help="Analizi ve ona ait tüm verileri kalıcı olarak siler.",
+                    ):
                         st.session_state[delete_key] = True
                         st.rerun()
                 else:
                     if not st.session_state[confirm_key]:
-                        st.warning(f"Confirm deletion of run {run_id}?")
-                        if st.button("Yes, Delete", key=f"yes_delete_{run_id}"):
+                        st.warning(f"{run_id} analizi silinsin mi?")
+                        if st.button("Evet, sil", key=f"yes_delete_{run_id}"):
                             st.session_state[confirm_key] = True
                             st.rerun()
-                        if st.button("Cancel", key=f"cancel_delete_{run_id}"):
+                        if st.button("Vazgeç", key=f"cancel_delete_{run_id}"):
                             st.session_state[delete_key] = False
                             st.rerun()
                     else:
                         try:
                             storage.delete_run(conn, run_id)
-                            st.success(f"Deleted run {run_id}")
+                            st.success(f"{run_id} silindi")
                             st.session_state[delete_key] = False
                             st.session_state[confirm_key] = False
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Failed to delete run: {e}")
+                            st.error(f"Silinemedi: {e}")
                             st.session_state[delete_key] = False
                             st.session_state[confirm_key] = False
 
@@ -367,25 +543,25 @@ def render_analysis_detail_page(conn: sqlite3.Connection, settings: Settings) ->
     run_id = st.query_params.get("run_id")
 
     if not run_id:
-        st.header("Analysis Detail")
-        st.info("No run selected. Please select a run from Past Analyses.")
-        if st.button("Go to Past Analyses"):
-            st.query_params.clear()
+        st.header("Analiz ayrıntısı")
+        st.info("Analiz seçilmedi. Lütfen Geçmiş analizler sayfasından bir analiz seçin.")
+        if st.button("Geçmiş analizlere git"):
+            st.switch_page(_NAV_PAGES["past"])
         return
 
     try:
         report = reporting.load_run_report(conn, run_id)
     except reporting.ReportNotAvailable:
-        st.header("Analysis Detail")
-        st.warning(f"Run {run_id} not found.")
-        if st.button("Go to Past Analyses"):
-            st.query_params.clear()
+        st.header("Analiz ayrıntısı")
+        st.warning(f"{run_id} analizi bulunamadı.")
+        if st.button("Geçmiş analizlere git"):
+            st.switch_page(_NAV_PAGES["past"])
         return
     except Exception as e:
-        st.error(f"Failed to load report: {e}")
+        st.error(f"Rapor yüklenemedi: {e}")
         return
 
-    st.header(f"Analysis Detail: {run_id}")
+    st.header(f"Analiz ayrıntısı: {run_id}")
 
     # Render caveats near the top
     render_caveat_panel(report.caveats)
@@ -405,65 +581,89 @@ def render_analysis_detail_page(conn: sqlite3.Connection, settings: Settings) ->
 
     # Render results
     st.divider()
-    st.subheader("Results")
+    st.subheader("Sonuçlar")
 
     # Check for empty candidate set
     if report.funnel.candidate_count == 0:
         st.info(
-            "**Not enough data**: No games passed the coarse filter. "
-            "Try adjusting the filter criteria or running a larger catalog scan."
+            "**Yeterli veri yok.** Hiçbir oyun kaba filtreyi geçemedi. "
+            "Daha büyük bir katalog taraması çalıştırmayı deneyin."
         )
         return
 
     # Check if simplicity subset is too small
     if report.funnel.simple_subset_size == 0:
         st.info(
-            "**Not enough data**: No games passed the simplicity filter. "
-            "The candidate set may not contain games matching the target archetype complexity."
+            "**Yeterli veri yok.** Hiçbir oyun basitlik filtresini geçemedi. "
+            "Aday kümesinde hedeflenen karmaşıklık düzeyine uyan oyun olmayabilir."
         )
         return
 
     # Opportunity matrix
-    st.subheader("Opportunity Matrix")
+    st.subheader("Fırsat matrisi")
     try:
-        st.dataframe(report.opportunity_matrix)
+        st.dataframe(_localize_columns(report.opportunity_matrix))
     except Exception as e:
-        st.warning(f"Could not render opportunity matrix: {e}")
+        st.warning(f"Fırsat matrisi gösterilemedi: {e}")
 
     # Tag summary
-    st.subheader("Tag Summary")
+    st.subheader("Etiket özeti")
     try:
-        st.dataframe(report.tag_summary)
+        st.dataframe(_localize_columns(report.tag_summary))
     except Exception as e:
-        st.warning(f"Could not render tag summary: {e}")
+        st.warning(f"Etiket özeti gösterilemedi: {e}")
 
     # Tag trends
-    st.subheader("Tag Trends")
+    st.subheader("Etiket eğilimleri")
     try:
-        st.dataframe(report.tag_trends)
+        st.dataframe(_localize_columns(report.tag_trends))
     except Exception as e:
-        st.warning(f"Could not render tag trends: {e}")
+        st.warning(f"Etiket eğilimleri gösterilemedi: {e}")
 
     # Case studies
-    st.subheader("Case Studies")
+    st.subheader("Vaka çalışmaları")
     if not report.case_studies:
-        st.info("No case studies available.")
+        st.info("Gösterilecek vaka çalışması yok.")
     else:
         for case_study in report.case_studies:
-            with st.expander(f"{case_study.app_name} (app_id={case_study.app_id})"):
+            with st.expander(f"{case_study.name} (appid={case_study.appid})"):
                 if case_study.rationale:
-                    st.write(f"**Rationale:** {case_study.rationale}")
-                if case_study.archetype:
-                    st.write(f"**Archetype:** {case_study.archetype}")
-                if hasattr(case_study, 'complexity_drivers') and case_study.complexity_drivers:
-                    st.write(f"**Complexity Drivers:** {case_study.complexity_drivers}")
+                    st.write(f"**Gerekçe:** {case_study.rationale}")
+                if case_study.archetype_label:
+                    st.write(f"**Arketip:** {case_study.archetype_label}")
+                st.write(
+                    f"**Geliştirici:** {case_study.developer} | "
+                    f"**Çıkış:** {case_study.release_date} | "
+                    f"**Fiyat:** ${case_study.price_usd:.2f}"
+                )
+                st.write(
+                    f"**Yorumlar:** {case_study.review_count:,} "
+                    f"(%{case_study.review_positive_pct * 100:.0f} olumlu)"
+                )
+                low, mid, high = case_study.estimated_sales_band
+                revenue = case_study.estimated_revenue_net_usd
+                revenue_text = "bilinmiyor" if revenue != revenue else f"${revenue:,.0f}"
+                st.write(
+                    f"**Tahmini satış (kaba aralık):** {low:,.0f} - {high:,.0f} "
+                    f"(orta {mid:,.0f}) | **Tahmini net gelir:** {revenue_text}"
+                )
+                st.write(f"**Karmaşıklık skoru:** {case_study.complexity_score:.2f}")
+                if case_study.top_tags:
+                    st.write(f"**Öne çıkan etiketler:** {', '.join(case_study.top_tags)}")
+                if case_study.complexity_drivers:
+                    drivers = ", ".join(
+                        f"{name} ({weight:.2f})"
+                        for name, weight in case_study.complexity_drivers
+                    )
+                    st.write(f"**Karmaşıklığı artıranlar:** {drivers}")
+                st.markdown(f"[Steam mağaza sayfası]({case_study.store_url})")
 
     # Funnel visualization
-    st.subheader("Funnel Summary")
+    st.subheader("Huni özeti")
     col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Catalog Size", report.funnel.catalog_size)
+        st.metric("Katalog boyutu", report.funnel.catalog_size)
     with col2:
-        st.metric("Candidates", report.funnel.candidate_count)
+        st.metric("Adaylar", report.funnel.candidate_count)
     with col3:
-        st.metric("Simple Subset", report.funnel.simple_subset_size)
+        st.metric("Basit oyunlar", report.funnel.simple_subset_size)

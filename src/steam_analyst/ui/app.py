@@ -28,6 +28,7 @@ from .pages import (
     render_new_analysis_page,
     render_past_analyses_page,
     render_analysis_detail_page,
+    register_nav_pages,
 )
 
 
@@ -66,7 +67,7 @@ def main() -> None:
             storage.migrate(conn)
             orchestration.reconcile_orphaned_runs(conn)
     except Exception as e:
-        st.error(f"Startup failed: {e}")
+        st.error(f"Başlatma hatası: {e}")
         return
 
     # 4. Build and dispatch navigation
@@ -111,23 +112,22 @@ def build_navigation(settings: Settings) -> st.navigation:
         return _wrapped
 
     # Build the three pages
-    pages = [
-        st.Page(
-            _page_adapter(render_new_analysis_page),
-            title="Run New Analysis",
-            url_path="new",
-            default=True,
-        ),
-        st.Page(
-            _page_adapter(render_past_analyses_page),
-            title="Past Analyses",
-            url_path="runs",
-        ),
-        st.Page(
-            _page_adapter(render_analysis_detail_page),
-            title="Analysis Detail",
-            url_path="detail",
-        ),
-    ]
+    new_page = st.Page(
+        _page_adapter(render_new_analysis_page),
+        title="Yeni analiz",
+        url_path="new",
+        default=True,
+    )
+    past_page = st.Page(
+        _page_adapter(render_past_analyses_page),
+        title="Geçmiş analizler",
+        url_path="runs",
+    )
+    detail_page = st.Page(
+        _page_adapter(render_analysis_detail_page),
+        title="Analiz ayrıntısı",
+        url_path="detail",
+    )
+    register_nav_pages({"new": new_page, "past": past_page, "detail": detail_page})
 
-    return st.navigation(pages)
+    return st.navigation([new_page, past_page, detail_page])
