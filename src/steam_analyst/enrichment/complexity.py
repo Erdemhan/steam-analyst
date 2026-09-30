@@ -35,7 +35,7 @@ def compute_complexity_details(
     """Compute complexity_score, per-feature contributions and imputation flags.
 
     Implements FORMULATION.md section 4: C_i = clip( Σ_f w_f · n_f(x_{i,f}) , 0, 1 )
-    with all nine features, their locked weights, and median imputation for missing data.
+    with all ten features, their locked weights, and median imputation for missing data.
 
     Args:
         frame: normalize_features' output, indexed by appid, plus
@@ -61,13 +61,14 @@ def compute_complexity_details(
     # features are both raw-missing (NaN in input) AND log-scaled-unnormalizable
     # (not in pre-freeze bounds), mark score as NaN.
     # Per FunctionSpec edge case, using a reasonable default of 0.4 (more than 40%)
-    # means 4+ of 9 features trigger nullification. Adjust this per domain guidance.
+    # means 5+ of 10 features trigger nullification. Adjust this per domain guidance.
     TOO_MUCH_MISSING_THRESHOLD = 0.4
 
-    # Define the 9 features with their properties:
+    # Define the 10 features with their properties:
     # (column_name, weight_key, normalizer_type, bounds_key_in_complexity_bounds)
     feature_specs = [
         ("size_bytes", "size_bytes", "log", "size_bytes"),
+        ("ram_bytes", "ram_bytes", "log", "ram_bytes"),
         ("early_access_days", "early_access_days", "log", "early_access_days"),
         ("dev_title_count", "dev_title_count", "log", "dev_title_count"),
         ("simplicity_tag_score", "simplicity_tag_score", "linear_negative", None),

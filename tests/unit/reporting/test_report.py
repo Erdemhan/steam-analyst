@@ -73,6 +73,7 @@ def _build_enriched_dataframe(appids: list[int]) -> pd.DataFrame:
         "owners_estimate_mid": [150 + i * 75 for i in appids],
         "owners_estimate_high": [200 + i * 100 for i in appids],
         "size_bytes": [1e9 + i * 1e8 for i in appids],
+        "ram_bytes": [1e9 + i * 1e8 for i in appids],
         "achievement_count": [10 + i for i in appids],
         "language_count": [5 + i for i in appids],
         "platform_count": [1] * len(appids),

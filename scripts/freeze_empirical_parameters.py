@@ -27,6 +27,7 @@ from steam_analyst.storage import get_run, read_enriched, read_tags
 # Log-scaled features from FORMULATION.md section 4's table
 LOG_SCALED_FEATURES = [
     "size_bytes",
+    "ram_bytes",
     "early_access_days",
     "dev_title_count",
     "achievement_count",

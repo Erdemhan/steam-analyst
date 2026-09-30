@@ -12,7 +12,7 @@ from .types import StorageError
 
 # The current schema version this codebase expects.
 # Increment this when the schema changes and add a corresponding migration.
-CURRENT_SCHEMA_VERSION = 1
+CURRENT_SCHEMA_VERSION = 2
 
 
 def initialize_schema(conn: sqlite3.Connection) -> None:
@@ -118,6 +118,7 @@ def initialize_schema(conn: sqlite3.Connection) -> None:
                 owners_estimate_mid INTEGER,
                 owners_estimate_high INTEGER,
                 size_bytes INTEGER,
+                ram_bytes INTEGER,
                 achievement_count INTEGER,
                 language_count INTEGER,
                 platform_count INTEGER,
@@ -283,13 +284,12 @@ def migrate(conn: sqlite3.Connection, target_version: int | None = None) -> int:
         return current
 
     # Define migration steps: version -> SQL statements to apply
-    # For version 1, there are no migrations (it's the initial version)
+    # Version 1 is the initial schema; version 2 adds games_enriched.ram_bytes.
     migrations = {
-        # Example structure for future migrations:
-        # 2: [
-        #     "ALTER TABLE some_table ADD COLUMN new_col TEXT;",
-        #     "UPDATE schema_meta SET version=2, applied_at=datetime('now')",
-        # ],
+        2: [
+            "ALTER TABLE games_enriched ADD COLUMN ram_bytes INTEGER",
+            "UPDATE schema_meta SET version=2, applied_at=datetime('now')",
+        ],
     }
 
     # Apply each migration in order

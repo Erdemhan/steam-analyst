@@ -116,7 +116,8 @@ refund_regional_factor = 0.0
 # --- enrichment: complexity score (FORMULATION.md §4) ---
 [enrichment.complexity_weights]
 size_bytes = 0.20
-early_access_days = 0.15
+ram_bytes = 0.10
+early_access_days = 0.05
 dev_title_count = 0.15
 simplicity_tag_score = 0.10
 complexity_tag_score = 0.10
@@ -197,6 +198,7 @@ def _make_enriched_frame(
         "owners_estimate_mid": [5000] * n,
         "owners_estimate_high": [10000] * n,
         "size_bytes": size_bytes,
+        "ram_bytes": [int(4e9 + i * 1e8) for i in range(n)],
         "achievement_count": achievement_count,
         "language_count": language_count,
         "platform_count": [1] * n,
@@ -258,7 +260,7 @@ class TestComputeFrozenBounds:
 
             # Verify bounds structure
             assert isinstance(bounds.complexity_bounds, dict)
-            assert len(bounds.complexity_bounds) == 6
+            assert len(bounds.complexity_bounds) == 7
             assert all(
                 isinstance(v, tuple) and len(v) == 2
                 for v in bounds.complexity_bounds.values()
@@ -267,6 +269,7 @@ class TestComputeFrozenBounds:
             # Verify against hand computation
             for feature in [
                 "size_bytes",
+                "ram_bytes",
                 "early_access_days",
                 "dev_title_count",
                 "achievement_count",

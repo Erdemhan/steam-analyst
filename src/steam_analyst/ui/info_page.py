@@ -130,6 +130,7 @@ _PARAM_TR = {
     "enrichment.revenue.discount_factor": "İndirim düzeltmesi",
     "enrichment.revenue.refund_regional_factor": "İade/bölgesel fiyat düzeltmesi",
     "enrichment.complexity_weights.size_bytes": "Karmaşıklık ağırlığı: kurulum boyutu",
+    "enrichment.complexity_weights.ram_bytes": "Karmaşıklık ağırlığı: RAM gereksinimi",
     "enrichment.complexity_weights.early_access_days": "Karmaşıklık ağırlığı: erken erişim süresi",
     "enrichment.complexity_weights.dev_title_count": "Karmaşıklık ağırlığı: geliştiricinin oyun sayısı",
     "enrichment.complexity_weights.simplicity_tag_score": "Karmaşıklık ağırlığı: basitlik etiketleri",
@@ -168,9 +169,9 @@ _OPEN_ITEMS = [
     (
         "Erken erişim süresi hiçbir oyun için alınamıyor",
         "Erken erişimde geçirilen gün sayısı belgelenmiş API'lerde yok. Erken erişim "
-        "durumu türlerden okunuyor, ancak süre bilinmediği için bu özellik (ağırlık 0,15) "
-        "herkes için sabit 0,5 değerinde kalıyor. Kurulum boyutu ise sistem "
-        "gereksinimi metninden okunuyor ve oyunların yaklaşık %97'sinde bulunuyor.",
+        "durumu türlerden okunuyor, ancak süre bilinmediği için bu özellik (ağırlık 0,05) "
+        "herkes için sabit 0,5 değerinde kalıyor. Kurulum boyutu ve RAM ise "
+        "sistem gereksinimi metninden okunuyor (örneklemde sırasıyla yaklaşık %97 ve %98).",
         "Erken erişim süresi için başka bir veri kaynağı ya da ağırlık revizyonu "
         "gerekiyor (FORMULATION.md kararı).",
     ),

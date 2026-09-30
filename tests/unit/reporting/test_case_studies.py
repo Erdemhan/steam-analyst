@@ -545,6 +545,7 @@ class TestSelectCaseStudies:
             "review_count": [100, 100, 100],
             "review_positive_pct": [0.8, 0.8, 0.8],
             "size_bytes": [1e9, 1e9, 1e9],
+            "ram_bytes": [1e9, 1e9, 1e9],
             "dev_title_count": [1.0, 1.0, 1.0],
             "archetype_label": ["A", "B", "C"],
             "estimated_revenue_net_usd": [1000.0, 1000.0, 1000.0],
@@ -573,6 +574,7 @@ class TestSelectCaseStudies:
             "review_count": [100],
             "review_positive_pct": [0.8],
             "size_bytes": [1e9],
+            "ram_bytes": [1e9],
             "dev_title_count": [1.0],
             "archetype_label": ["Action"],
             "estimated_revenue_net_usd": [500.0],
@@ -678,6 +680,7 @@ class TestIntegration:
             "owners_estimate_mid": [150, 75, 300],
             "owners_estimate_high": [200, 100, 400],
             "size_bytes": [1e9, 2e9, 3e9],
+            "ram_bytes": [1e9, 2e9, 3e9],
             "dev_title_count": [1.0, 2.0, 3.0],
         })
         assignments = pd.DataFrame({

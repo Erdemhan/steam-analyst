@@ -33,6 +33,7 @@ _GAMES_ENRICHED_COLUMNS = [
     "owners_estimate_mid",
     "owners_estimate_high",
     "size_bytes",
+    "ram_bytes",
     "achievement_count",
     "language_count",
     "platform_count",

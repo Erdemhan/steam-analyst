@@ -95,8 +95,8 @@ class EnrichmentParams:
         discount_factor: delta. Locked value: 0.0 (FORMULATION.md section 3 --
             deliberately conservative-on-assumptions choice).
         refund_regional_factor: rho. Locked value: 0.0.
-        complexity_weights: Nine feature weights from FORMULATION.md section 4,
-            summing to 1.0 (install_size=0.20, early_access_duration=0.15,
+        complexity_weights: Ten feature weights from FORMULATION.md section 4,
+            summing to 1.0 (install_size=0.20, ram_bytes=0.10, early_access_duration=0.05,
             dev_catalog_size=0.15, simplicity_tag_score=0.10,
             complexity_tag_score=0.10, achievement_count=0.10, dlc_count=0.10,
             platform_count=0.05, language_count=0.05).

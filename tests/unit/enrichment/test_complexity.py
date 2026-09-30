@@ -34,7 +34,8 @@ def mock_enrichment_params_with_bounds() -> EnrichmentParams:
         refund_regional_factor=0.0,
         complexity_weights={
             "size_bytes": 0.20,
-            "early_access_days": 0.15,
+            "ram_bytes": 0.10,
+            "early_access_days": 0.05,
             "dev_title_count": 0.15,
             "simplicity_tag_score": 0.10,
             "complexity_tag_score": 0.10,
@@ -45,6 +46,7 @@ def mock_enrichment_params_with_bounds() -> EnrichmentParams:
         },
         complexity_bounds={
             "size_bytes": (8.0, 10.5),
+            "ram_bytes": (8.0, 10.5),
             "early_access_days": (0.0, 3.0),
             "dev_title_count": (0.0, 2.5),
             "achievement_count": (0.0, 3.0),
@@ -74,7 +76,8 @@ def mock_enrichment_params_pre_freeze() -> EnrichmentParams:
         refund_regional_factor=0.0,
         complexity_weights={
             "size_bytes": 0.20,
-            "early_access_days": 0.15,
+            "ram_bytes": 0.10,
+            "early_access_days": 0.05,
             "dev_title_count": 0.15,
             "simplicity_tag_score": 0.10,
             "complexity_tag_score": 0.10,
@@ -107,7 +110,8 @@ class TestComputeComplexityScoreFundamental:
             refund_regional_factor=0.0,
             complexity_weights={
                 "size_bytes": 0.20,
-                "early_access_days": 0.15,
+                "ram_bytes": 0.10,
+                "early_access_days": 0.05,
                 "dev_title_count": 0.15,
                 "simplicity_tag_score": 0.10,
                 "complexity_tag_score": 0.10,
@@ -132,6 +136,7 @@ class TestComputeComplexityScoreFundamental:
         frame = pd.DataFrame(
             {
                 "size_bytes": [1e9, 2e9],
+                "ram_bytes": [1e9, 2e9],
                 "is_early_access": [False, True],
                 "early_access_days": [np.nan, 30.0],
                 "dev_title_count": [0, 5],
@@ -156,11 +161,12 @@ class TestComputeComplexityScoreFundamental:
         assert score.index.equals(frame.index)
         assert contrib.index.equals(frame.index)
 
-    def test_output_has_all_nine_feature_columns(self, mock_enrichment_params_with_bounds):
-        """Contributions dataframe has exactly 9 columns (one per feature)."""
+    def test_output_has_all_ten_feature_columns(self, mock_enrichment_params_with_bounds):
+        """Contributions dataframe has exactly 10 columns (one per feature)."""
         frame = pd.DataFrame(
             {
                 "size_bytes": [1e9],
+                "ram_bytes": [1e9],
                 "is_early_access": [False],
                 "early_access_days": [0.0],
                 "dev_title_count": [1],
@@ -177,6 +183,7 @@ class TestComputeComplexityScoreFundamental:
         )
         expected_features = [
             "size_bytes",
+            "ram_bytes",
             "early_access_days",
             "dev_title_count",
             "simplicity_tag_score",
@@ -195,6 +202,7 @@ class TestComputeComplexityScoreFundamental:
         frame = pd.DataFrame(
             {
                 "size_bytes": [1e9, 2e9],
+                "ram_bytes": [1e9, 2e9],
                 "is_early_access": [False, False],
                 "early_access_days": [0.0, 0.0],
                 "dev_title_count": [1, 2],
@@ -225,6 +233,7 @@ class TestComplexityScoreNormalization:
         frame = pd.DataFrame(
             {
                 "size_bytes": [1.0],  # Very small, will normalize to ~0
+                "ram_bytes": [1.0],
                 "is_early_access": [False],
                 "early_access_days": [0.0],  # 0 days, will normalize to 0
                 "dev_title_count": [0],  # No other titles, will normalize to ~0
@@ -256,6 +265,7 @@ class TestComplexityScoreNormalization:
         frame = pd.DataFrame(
             {
                 "size_bytes": [1e12],  # Very large
+                "ram_bytes": [1e12],
                 "is_early_access": [True],
                 "early_access_days": [1000.0],  # Long EA duration
                 "dev_title_count": [100],  # Very prolific developer
@@ -285,6 +295,7 @@ class TestComplexityScoreNormalization:
         frame = pd.DataFrame(
             {
                 "size_bytes": [100.0],  # Minimal normalized value
+                "ram_bytes": [100.0],
                 "is_early_access": [False],
                 "early_access_days": [0.0],
                 "dev_title_count": [1],
@@ -325,6 +336,7 @@ class TestComplexityScoreNormalization:
         frame = pd.DataFrame(
             {
                 "size_bytes": [1e9, 1e9],
+                "ram_bytes": [1e9, 1e9],
                 "is_early_access": [False, False],
                 "early_access_days": [0.0, 0.0],
                 "dev_title_count": [1, 1],
@@ -364,6 +376,7 @@ class TestMedianImputation:
         frame = pd.DataFrame(
             {
                 "size_bytes": [1e9, 2e9, 3e9],
+                "ram_bytes": [1e9, 2e9, 3e9],
                 "is_early_access": [False, False, False],
                 "early_access_days": [0.0, 0.0, 0.0],
                 "dev_title_count": [1, 1, 1],
@@ -410,6 +423,7 @@ class TestMedianImputation:
         frame = pd.DataFrame(
             {
                 "size_bytes": [1e9, 2e9],
+                "ram_bytes": [1e9, 2e9],
                 "is_early_access": [True, True],  # Important: True so that early_access_days stays NaN
                 "early_access_days": [np.nan, np.nan],  # All missing
                 "dev_title_count": [1, 1],
@@ -425,8 +439,8 @@ class TestMedianImputation:
             frame, tags, mock_enrichment_params_with_bounds
         )
 
-        # early_access_days contribution should be 0.5 * 0.15 for all rows
-        expected_early_access_contrib = 0.5 * 0.15
+        # early_access_days contribution should be 0.5 * 0.05 for all rows
+        expected_early_access_contrib = 0.5 * 0.05
         for appid in [100, 200]:
             assert abs(
                 contrib.loc[appid, "early_access_days"] - expected_early_access_contrib
@@ -447,6 +461,7 @@ class TestTooMuchMissingData:
         frame = pd.DataFrame(
             {
                 "size_bytes": [np.nan],  # Missing
+                "ram_bytes": [np.nan],
                 "is_early_access": [False],
                 "early_access_days": [np.nan],  # Missing
                 "dev_title_count": [np.nan],  # Missing
@@ -472,6 +487,7 @@ class TestTooMuchMissingData:
         frame = pd.DataFrame(
             {
                 "size_bytes": [np.nan],  # Missing
+                "ram_bytes": [np.nan],
                 "is_early_access": [False],
                 "early_access_days": [np.nan],  # Missing
                 "dev_title_count": [np.nan],  # Missing
@@ -500,6 +516,7 @@ class TestPreFreezeScenario:
         frame = pd.DataFrame(
             {
                 "size_bytes": [1e9, 2e9, 3e9],
+                "ram_bytes": [1e9, 2e9, 3e9],
                 "is_early_access": [False, False, False],
                 "early_access_days": [0.0, 0.0, 0.0],
                 "dev_title_count": [1, 2, 3],
@@ -519,6 +536,7 @@ class TestPreFreezeScenario:
         # (imputed at the cohort median, which is the same for everyone)
         log_scaled_features = [
             "size_bytes",
+            "ram_bytes",
             "early_access_days",
             "dev_title_count",
             "achievement_count",
@@ -538,6 +556,7 @@ class TestPreFreezeScenario:
         frame = pd.DataFrame(
             {
                 "size_bytes": [1e9, 2e9, 3e9],
+                "ram_bytes": [1e9, 2e9, 3e9],
                 "is_early_access": [False, False, False],
                 "early_access_days": [0.0, 0.0, 0.0],
                 "dev_title_count": [1, 2, 3],
@@ -587,6 +606,7 @@ class TestWeightedSumCorrectness:
         frame = pd.DataFrame(
             {
                 "size_bytes": [100.0],  # log10(101) ≈ 2.004, (2.004-8)/(10.5-8) ≈ -2.135 -> 0 (clipped)
+                "ram_bytes": [100.0],
                 "is_early_access": [False],
                 "early_access_days": [0.0],  # (0-0)/(3-0) = 0
                 "dev_title_count": [1.0],  # log10(2) ≈ 0.301, (0.301-0)/(2.5-0) ≈ 0.120
@@ -611,7 +631,8 @@ class TestWeightedSumCorrectness:
 
         # Hand-compute expected score:
         # size_bytes: 0.0 * 0.20 = 0.0
-        # early_access_days: 0.0 * 0.15 = 0.0
+        # ram_bytes: 0.0 * 0.10 = 0.0
+        # early_access_days: 0.0 * 0.05 = 0.0
         # dev_title_count: 0.120 * 0.15 ≈ 0.018
         # simplicity_tag_score: (1.0 - 1.0) * 0.10 = 0.0  # inverted
         # complexity_tag_score: 0.0 * 0.10 = 0.0  # no complexity tags
@@ -637,6 +658,7 @@ class TestEdgeCases:
         frame = pd.DataFrame(
             {
                 "size_bytes": [1e9, 1e9],
+                "ram_bytes": [1e9, 1e9],
                 "is_early_access": [True, True],  # Important: True so that early_access_days stays NaN
                 "early_access_days": [np.nan, np.nan],  # All NaN
                 "dev_title_count": [1, 1],
@@ -652,10 +674,10 @@ class TestEdgeCases:
             frame, tags, mock_enrichment_params_with_bounds
         )
 
-        # early_access_days should contribute 0.5 * 0.15 for all rows
+        # early_access_days should contribute 0.5 * 0.05 for all rows
         for appid in [100, 200]:
             assert abs(
-                contrib.loc[appid, "early_access_days"] - 0.5 * 0.15
+                contrib.loc[appid, "early_access_days"] - 0.5 * 0.05
             ) < 1e-9
 
     def test_single_row_frame(self, mock_enrichment_params_with_bounds):
@@ -663,6 +685,7 @@ class TestEdgeCases:
         frame = pd.DataFrame(
             {
                 "size_bytes": [5e9],
+                "ram_bytes": [5e9],
                 "is_early_access": [True],
                 "early_access_days": [90.0],
                 "dev_title_count": [10],
@@ -690,6 +713,7 @@ class TestEdgeCases:
             frame = pd.DataFrame(
                 {
                     "size_bytes": np.random.uniform(1e7, 1e12, 20),
+                    "ram_bytes": np.random.uniform(1e7, 1e12, 20),
                     "is_early_access": np.random.choice([True, False], 20),
                     "early_access_days": np.random.uniform(0, 365, 20),
                     "dev_title_count": np.random.uniform(0, 100, 20),
@@ -715,6 +739,7 @@ class TestEdgeCases:
         frame = pd.DataFrame(
             {
                 "size_bytes": [0],  # log10(0+1) = 0
+                "ram_bytes": [0],
                 "is_early_access": [False],
                 "early_access_days": [0.0],
                 "dev_title_count": [0],  # log10(0+1) = 0

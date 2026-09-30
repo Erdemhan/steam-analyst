@@ -114,6 +114,7 @@ def build_enriched_frame(
                 "owners_estimate_mid",
                 "owners_estimate_high",
                 "size_bytes",
+                "ram_bytes",
                 "achievement_count",
                 "language_count",
                 "platform_count",
@@ -180,6 +181,7 @@ def build_enriched_frame(
                 "owners_estimate_mid",
                 "owners_estimate_high",
                 "size_bytes",
+                "ram_bytes",
                 "achievement_count",
                 "language_count",
                 "platform_count",
@@ -240,6 +242,7 @@ def build_enriched_frame(
         "owners_estimate_mid",
         "owners_estimate_high",
         "size_bytes",
+        "ram_bytes",
         "achievement_count",
         "language_count",
         "platform_count",
@@ -293,6 +296,7 @@ def build_enriched_frame(
         "owners_estimate_mid",
         "owners_estimate_high",
         "size_bytes",
+        "ram_bytes",
         "achievement_count",
         "language_count",
         "platform_count",
@@ -402,6 +406,7 @@ def run_enrichment(
             # For each complexity feature, compute the imputation rate
             feature_list = [
                 "size_bytes",
+                "ram_bytes",
                 "early_access_days",
                 "dev_title_count",
                 "achievement_count",
@@ -430,6 +435,7 @@ def run_enrichment(
             # Empty result set
             for feature_name in [
                 "size_bytes",
+                "ram_bytes",
                 "early_access_days",
                 "dev_title_count",
                 "achievement_count",

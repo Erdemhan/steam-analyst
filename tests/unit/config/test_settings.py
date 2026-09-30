@@ -218,7 +218,8 @@ class TestEnrichmentParams:
             refund_regional_factor=0.0,
             complexity_weights={
                 "size_bytes": 0.20,
-                "early_access_days": 0.15,
+                "ram_bytes": 0.10,
+                "early_access_days": 0.05,
                 "dev_title_count": 0.15,
                 "simplicity_tag_score": 0.10,
                 "complexity_tag_score": 0.10,
@@ -250,7 +251,8 @@ class TestEnrichmentParams:
             refund_regional_factor=0.0,
             complexity_weights={
                 "size_bytes": 0.20,
-                "early_access_days": 0.15,
+                "ram_bytes": 0.10,
+                "early_access_days": 0.05,
                 "dev_title_count": 0.15,
                 "simplicity_tag_score": 0.10,
                 "complexity_tag_score": 0.10,
@@ -287,7 +289,8 @@ class TestEnrichmentParams:
             refund_regional_factor=0.0,
             complexity_weights={
                 "size_bytes": 0.20,
-                "early_access_days": 0.15,
+                "ram_bytes": 0.10,
+                "early_access_days": 0.05,
                 "dev_title_count": 0.15,
                 "simplicity_tag_score": 0.10,
                 "complexity_tag_score": 0.10,

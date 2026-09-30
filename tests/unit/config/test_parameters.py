@@ -50,7 +50,8 @@ def create_minimal_valid_raw() -> dict[str, Any]:
             },
             "complexity_weights": {
                 "size_bytes": 0.20,
-                "early_access_days": 0.15,
+                "ram_bytes": 0.10,
+                "early_access_days": 0.05,
                 "dev_title_count": 0.15,
                 "simplicity_tag_score": 0.10,
                 "complexity_tag_score": 0.10,
@@ -491,7 +492,7 @@ class TestLoadParameters:
         assert enr.storefront_cut == 0.30
         assert enr.discount_factor == 0.0
         assert enr.refund_regional_factor == 0.0
-        assert len(enr.complexity_weights) == 9
+        assert len(enr.complexity_weights) == 10
         assert len(enr.simplicity_tags) > 0
         assert len(enr.complexity_tags) > 0
         assert enr.effort_epsilon == 0.05

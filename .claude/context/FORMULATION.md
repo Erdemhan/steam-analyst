@@ -187,7 +187,8 @@ use `n(x) = clip( (log10(x + 1) − a) / (b − a), 0, 1 )`.
 | Feature `f` | Raw value | Normalizer | Weight `w_f` | Rationale |
 |---|---|---|---|---|
 | Install size | `size_bytes` | log-scaled | 0.20 | Asset volume proxy; strongest single scope signal available |
-| Early-access duration | days | log-scaled | 0.15 | Development-time proxy where observable |
+| Minimum RAM requirement | `ram_bytes` | log-scaled | 0.10 | Runtime memory footprint proxy; parsed from the system requirements |
+| Early-access duration | days | log-scaled | 0.05 | Development-time proxy where observable |
 | Developer catalog size | other titles by same dev | log-scaled | 0.15 | Studio capacity proxy |
 | Simplicity tag score | tag match | linear, negative | 0.10 | Pixel-art / 2D / casual / short / singleplayer reduce complexity |
 | Complexity tag score | tag match | linear, positive | 0.10 | Open-world / multiplayer / physics / procedural raise it |
@@ -197,6 +198,14 @@ use `n(x) = clip( (log10(x + 1) − a) / (b − a), 0, 1 )`.
 | Supported languages | count | log-scaled | 0.05 | Weak signal; often community-translated, not build effort |
 
 Weights sum to 1.00.
+
+**Amendment (user-approved 2026-09-30).** `ram_bytes` was added as a tenth feature with
+weight 0.10, and the weight of `early_access_days` was reduced from 0.15 to 0.05. The
+early-access duration is not observable through the documented APIs, so that feature
+stays at the 0.5 midpoint fallback and carried 15% of the score as a constant. The
+minimum RAM requirement is parsed from the `Memory:` / `RAM:` line of the `pc_requirements`
+text (the minimum requirements, falling back to the recommended ones). Its normalization
+bounds are frozen below like those of the other log-scaled features.
 
 **✅ LOCKED (user-approved 2026-09-20).** Normalization bounds `a`, `b` per feature
 are derived empirically from the candidate-set distribution of the first completed
@@ -215,6 +224,7 @@ and 95th percentiles of `log10(x + 1)` over the 203 enriched candidates of this 
 | Feature | `a` | `b` |
 |---|---|---|
 | `size_bytes` | 8.660245 | 10.965682 |
+| `ram_bytes` | 9.301030 | 10.204120 |
 | `dev_title_count` | 0.000000 | 0.602060 |
 | `achievement_count` | 1.134863 | 2.211565 |
 | `dlc_count` | 0.000000 | 1.342423 |
@@ -225,7 +235,9 @@ and 95th percentiles of `log10(x + 1)` over the 203 enriched candidates of this 
 early-access duration, so the feature remains at the 0.5 midpoint fallback. The sample
 is restricted to high-owner applications, so the bounds may sit higher than those of
 the full candidate population. `size_bytes` is parsed from the `pc_requirements` text
-(storage line), not from a dedicated API field.
+(storage line), and `ram_bytes` from its memory line, not from dedicated API
+fields. The `ram_bytes` bounds (2 GB and 16 GB in decimal units) were computed on the
+same 203-game sample, where 198 games had a parseable memory requirement.
 
 ---
 
@@ -390,7 +402,8 @@ refund_regional_factor = 0.0
 # --- enrichment: complexity score (FORMULATION.md §4) ---
 [enrichment.complexity_weights]
 size_bytes = 0.20
-early_access_days = 0.15
+ram_bytes = 0.10
+early_access_days = 0.05
 dev_title_count = 0.15
 simplicity_tag_score = 0.10
 complexity_tag_score = 0.10
@@ -407,6 +420,7 @@ complexity_tags = ["Open World", "Multiplayer", "Physics", "Procedural Generatio
 # early_access_days has no observable values and is intentionally absent.
 [enrichment.complexity_bounds]
 size_bytes = [8.660244515301235, 10.965681882084198]
+ram_bytes = [9.301029995881128, 10.204119982683068]
 dev_title_count = [0.0, 0.6020599913279624]
 achievement_count = [1.1348633964982475, 2.211565253290689]
 dlc_count = [0.0, 1.3424226808222062]

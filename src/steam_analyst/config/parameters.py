@@ -178,6 +178,7 @@ def validate_parameters(raw: dict[str, Any]) -> None:
     weights = enr["complexity_weights"]
     expected_weight_keys = [
         "size_bytes",
+        "ram_bytes",
         "early_access_days",
         "dev_title_count",
         "simplicity_tag_score",

@@ -386,3 +386,32 @@ class TestSchemaWithConnect:
             cursor.execute("SELECT COUNT(*) as cnt FROM runs")
             count = cursor.fetchone()["cnt"]
             assert count == 1
+
+
+class TestRamBytesMigration:
+    """Schema version 2 adds games_enriched.ram_bytes to databases created at version 1."""
+
+    def test_fresh_database_has_ram_bytes_column(self, tmp_path: Path):
+        conn = get_connection(tmp_path / "fresh.db")
+        try:
+            initialize_schema(conn)
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(games_enriched)")]
+            assert "ram_bytes" in cols
+            assert current_schema_version(conn) == CURRENT_SCHEMA_VERSION
+        finally:
+            conn.close()
+
+    def test_v1_database_is_migrated_in_place(self, tmp_path: Path):
+        conn = get_connection(tmp_path / "old.db")
+        try:
+            initialize_schema(conn)
+            conn.execute("ALTER TABLE games_enriched DROP COLUMN ram_bytes")
+            conn.execute("UPDATE schema_meta SET version=1")
+            conn.commit()
+
+            assert migrate(conn) == CURRENT_SCHEMA_VERSION
+            cols = [r[1] for r in conn.execute("PRAGMA table_info(games_enriched)")]
+            assert "ram_bytes" in cols
+            assert current_schema_version(conn) == CURRENT_SCHEMA_VERSION
+        finally:
+            conn.close()

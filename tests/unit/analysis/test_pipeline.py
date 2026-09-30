@@ -80,6 +80,7 @@ def _build_enriched_frame(n_rows: int = 30) -> pd.DataFrame:
         "owners_estimate_mid": np.random.randint(500, 5000, n_rows),
         "owners_estimate_high": np.random.randint(1000, 10000, n_rows),
         "size_bytes": np.random.randint(int(1e7), int(1e9), n_rows),
+        "ram_bytes": np.random.randint(int(1e7), int(1e9), n_rows),
         "achievement_count": np.random.randint(0, 50, n_rows),
         "language_count": np.random.randint(1, 20, n_rows),
         "platform_count": np.random.randint(1, 4, n_rows),

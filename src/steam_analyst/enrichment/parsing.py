@@ -71,6 +71,48 @@ def parse_install_size_bytes(pc_requirements: Any) -> int | None:
     return None
 
 
+_RAM_LABEL_RE = re.compile(
+    r"(?<!video )(?<!graphics )(?<!dedicated )(?<![a-z])(?:system\s+)?(?:memory|ram)\s*:",
+    re.IGNORECASE,
+)
+
+
+def parse_ram_bytes(pc_requirements: Any) -> int | None:
+    """Extract the required system RAM in bytes from a Steam pc_requirements value.
+
+    The 'Memory:' / 'RAM:' line of the minimum (falling back to recommended)
+    system requirements is parsed, e.g. "<li><strong>Memory:</strong> 8 GB RAM</li>".
+    Video-memory lines (e.g. "Video Memory:") are ignored.
+
+    Args:
+        pc_requirements: The appdetails 'pc_requirements' value (a dict with
+            'minimum'/'recommended' HTML strings, or an empty list when absent).
+
+    Returns:
+        RAM in bytes (decimal units: 1 GB = 1e9, consistent with install size),
+        or None when no memory line with a parseable size exists.
+    """
+    if not isinstance(pc_requirements, dict):
+        return None
+    for key in ("minimum", "recommended"):
+        html = pc_requirements.get(key)
+        if not isinstance(html, str) or not html:
+            continue
+        for item in re.split(r"<br\s*/?>|</li>|\n", html, flags=re.IGNORECASE):
+            text = _HTML_TAG_RE.sub(" ", item)
+            label = _RAM_LABEL_RE.search(text)
+            if not label:
+                continue
+            value = _SIZE_VALUE_RE.search(text[label.end():])
+            if not value:
+                continue
+            amount = float(value.group(1).replace(",", "."))
+            size = int(amount * _SIZE_UNIT_BYTES[value.group(2).lower()])
+            if size > 0:
+                return size
+    return None
+
+
 def parse_is_early_access(genres: Any) -> bool:
     """Return True when appdetails genres contain Steam's 'Early Access' genre (id 70)."""
     if not isinstance(genres, list):
@@ -287,6 +329,12 @@ def normalize_features(bundle: RawBundle) -> pd.DataFrame:
             if size_bytes is None:
                 missing_fields.append("size_bytes")
 
+        ram_bytes = None
+        if appdetails_success:
+            ram_bytes = parse_ram_bytes(appdetails_data.get("pc_requirements"))
+            if ram_bytes is None:
+                missing_fields.append("ram_bytes")
+
         achievement_count = None
         if appdetails_success:
             achievements = appdetails_data.get("achievements", {})
@@ -389,6 +437,7 @@ def normalize_features(bundle: RawBundle) -> pd.DataFrame:
             "owners_estimate_mid": owners_estimate_mid,
             "owners_estimate_high": owners_estimate_high,
             "size_bytes": size_bytes,
+            "ram_bytes": ram_bytes,
             "achievement_count": achievement_count,
             "language_count": language_count,
             "platform_count": platform_count,
