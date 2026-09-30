@@ -585,3 +585,17 @@ class TestCrossThreadDetection:
 
         assert len(error_holder) == 1
         assert "cross-thread" in str(error_holder[0]).lower()
+
+
+class TestUpdateRunStatusFinishedAt:
+    """finished_at is auto-populated on terminal statuses."""
+
+    def test_terminal_status_sets_finished_at_when_omitted(self, conn):
+        run_id = create_run(conn, config={}, parameters_version="v1")
+        update_run_status(conn, run_id, "succeeded")
+        assert get_run(conn, run_id).finished_at is not None
+
+    def test_running_status_leaves_finished_at_none(self, conn):
+        run_id = create_run(conn, config={}, parameters_version="v1")
+        update_run_status(conn, run_id, "running")
+        assert get_run(conn, run_id).finished_at is None

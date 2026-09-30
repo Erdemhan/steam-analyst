@@ -435,9 +435,9 @@ def _build_case_study(row: pd.Series, archetype_label: str) -> CaseStudy:
     review_positive_pct = _safe_float(row.get("review_positive_pct"), default=float("nan"))
 
     # Estimated sales band (low, mid, high)
-    estimated_sales_low = _safe_float(row.get("owners_estimate_low"), default=float("nan"))
-    estimated_sales_mid = _safe_float(row.get("owners_estimate_mid"), default=float("nan"))
-    estimated_sales_high = _safe_float(row.get("owners_estimate_high"), default=float("nan"))
+    estimated_sales_low = _safe_float(row.get("estimated_sales_low"), default=float("nan"))
+    estimated_sales_mid = _safe_float(row.get("estimated_sales_mid"), default=float("nan"))
+    estimated_sales_high = _safe_float(row.get("estimated_sales_high"), default=float("nan"))
     estimated_sales_band = (estimated_sales_low, estimated_sales_mid, estimated_sales_high)
 
     estimated_revenue_net_usd = _safe_float(row.get("estimated_revenue_net_usd"), default=float("nan"))

@@ -326,6 +326,9 @@ def update_run_status(
     if cursor.fetchone() is None:
         raise StorageError(f"Run {run_id} does not exist")
 
+    if finished_at is None and status in {"succeeded", "failed", "cancelled"}:
+        finished_at = datetime.utcnow().isoformat()
+
     # Update the run
     try:
         cursor.execute(

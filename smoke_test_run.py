@@ -5,6 +5,7 @@ config/parameters.toml or FORMULATION.md) to a tiny candidate set so this
 finishes in a couple of minutes instead of hours. Not a permanent script --
 for one-off manual verification only.
 """
+import argparse
 import dataclasses
 import sys
 import traceback
@@ -16,6 +17,13 @@ from steam_analyst import config, orchestration, storage
 
 
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--min-reviews", type=int, default=200_000,
+                        help="coarse-filter review floor (lower = more candidates = longer run)")
+    parser.add_argument("--pages", type=int, default=1,
+                        help="max SteamSpy catalog pages (1000 apps each)")
+    args = parser.parse_args()
+
     db_path = Path("data/analyses.db")
     settings = config.load_settings()
     parameters_version = config.parameters_version(settings.parameters_path)
@@ -29,7 +37,7 @@ def main() -> int:
     # config/parameters.toml -- it is a local, in-memory copy for this script.
     narrow_coarse_filter = dataclasses.replace(
         acquisition_config.coarse_filter,
-        min_review_count=200_000,
+        min_review_count=args.min_reviews,
     )
     smoke_acquisition_config = dataclasses.replace(
         acquisition_config,
@@ -37,7 +45,7 @@ def main() -> int:
     )
 
     pipeline_config = orchestration.PipelineConfig(
-        max_catalog_pages=1,
+        max_catalog_pages=args.pages,
         notes="smoke test run (manual, narrowed coarse filter)",
     )
 

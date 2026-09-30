@@ -198,13 +198,15 @@ def normalize_features(bundle: RawBundle) -> pd.DataFrame:
         review_positive_pct = None
         if reviews_payload and reviews_payload.get("success"):
             query_summary = reviews_payload.get("query_summary", {})
-            review_score = query_summary.get("review_score")
-            if review_score is not None and isinstance(review_score, (int, float)):
-                # If it's an integer percentage like 87, normalize to 0.87
-                if review_score > 1:
-                    review_positive_pct = review_score / 100.0
-                else:
-                    review_positive_pct = review_score
+            # review_score is Steam's 1-9 categorical rating, not a percentage.
+            total_positive = query_summary.get("total_positive")
+            total_reviews = query_summary.get("total_reviews")
+            if (
+                isinstance(total_positive, (int, float))
+                and isinstance(total_reviews, (int, float))
+                and total_reviews > 0
+            ):
+                review_positive_pct = total_positive / total_reviews
 
         # Owners band from SteamSpy
         owners_estimate_low = steamspy_data.get("owners_low")

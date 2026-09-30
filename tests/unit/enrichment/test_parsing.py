@@ -182,7 +182,8 @@ class TestNormalizeFeatures:
                 "success": 1,
                 "query_summary": {
                     "total_reviews": 1100,
-                    "review_score": 0.90,
+                    "total_positive": 990,
+                    "review_score": 8,
                 },
             }
         }
@@ -263,7 +264,7 @@ class TestNormalizeFeatures:
         assert df.loc[100, "review_count_source"] == "steamspy_fallback"
 
     def test_normalize_features_review_pct_normalization(self):
-        """Test that integer percentage review_score is normalized to [0, 1]."""
+        """Positive fraction comes from total_positive/total_reviews, never from the 1-9 review_score."""
         steamspy_data = {
             "100": {
                 "appid": 100,
@@ -280,7 +281,8 @@ class TestNormalizeFeatures:
                 "success": 1,
                 "query_summary": {
                     "total_reviews": 1100,
-                    "review_score": 87,  # Integer percentage
+                    "total_positive": 957,
+                    "review_score": 8,  # Steam's 1-9 categorical rating, not a percentage
                 },
             }
         }
@@ -288,7 +290,7 @@ class TestNormalizeFeatures:
         bundle = RawBundle("test", steamspy_data, {}, appdetails_data, reviews_data)
         df = normalize_features(bundle)
 
-        # Should be normalized to 0.87
+        # 957 / 1100 = 0.87
         assert abs(df.loc[100, "review_positive_pct"] - 0.87) < 0.001
 
     def test_normalize_features_empty_tags_list(self):
