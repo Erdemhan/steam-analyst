@@ -265,7 +265,7 @@ def run_analysis(
             progress=0.20,
         )
 
-        cluster_result = cluster_tags(tags, frame, params)
+        cluster_result = cluster_tags(tags, buildable, params)
 
         # Emit provisional threshold warning if using run-local search
         if (
@@ -312,15 +312,15 @@ def run_analysis(
             progress=0.35,
         )
 
-        demand = compute_demand(frame, cluster_result.assignments, params)
+        demand = compute_demand(buildable, cluster_result.assignments, params)
         competition = compute_competition_density(
-            frame, cluster_result.assignments, params
+            buildable, cluster_result.assignments, params
         )
 
         # Compute simplicity: median complexity per cluster from windowed games
         # Join frame with assignments, filter to windowed releases, compute median complexity
         simplicity = _compute_simplicity_per_cluster(
-            frame, cluster_result.assignments, params
+            buildable, cluster_result.assignments, params
         )
 
         # Write competition_density result
@@ -384,7 +384,7 @@ def run_analysis(
             progress=0.70,
         )
 
-        trends = compute_tag_trends(frame, cluster_result.assignments, params)
+        trends = compute_tag_trends(buildable, cluster_result.assignments, params)
 
         # Write tag_trends result
         trends_payload = {
@@ -424,7 +424,7 @@ def run_analysis(
             progress=0.85,
         )
 
-        tag_summary = build_tag_summary(frame, tags, params)
+        tag_summary = build_tag_summary(buildable, tags, params)
 
         # Write tag_summary result
         tag_summary_payload = {

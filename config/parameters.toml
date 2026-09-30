@@ -14,7 +14,13 @@ publisher_blocklist = [
   "Take-Two Interactive", "Rockstar Games", "2K", "Bethesda Softworks",
   "ZeniMax", "Square Enix", "Capcom", "Sega", "Bandai Namco", "Konami",
   "Sony Interactive Entertainment", "Microsoft Studios", "Xbox Game Studios",
-  "Warner Bros Games", "Epic Games", "Devolver Digital"
+  "Warner Bros", "Epic Games", "Devolver Digital",
+  "CD PROJEKT", "Larian Studios", "Game Science", "PlayStation Publishing",
+  "Sony", "Microsoft", "Blizzard", "Amazon Game Studios", "Deep Silver",
+  "Focus Entertainment", "Paradox Interactive", "Techland", "Remedy Entertainment",
+  "IO Interactive", "NetEase", "NEXON", "KRAFTON", "Cygames", "Perfect World",
+  "Quantic Dream", "Prime Matter", "Valve", "Tencent", "Koei Tecmo", "Embracer",
+  "THQ Nordic", "Riot Games", "Gearbox",
 ]
 
 # --- acquisition rate limiting (operational tunables, not FORMULATION.md-locked) ---

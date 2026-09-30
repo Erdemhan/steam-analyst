@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 
 from steam_analyst.analysis.clustering import cluster_tags
+from steam_analyst.analysis.simplicity import apply_simplicity_filter
 from steam_analyst.config.parameters import ParameterError, validate_parameters
 from steam_analyst.config.settings import AnalysisParams
 from steam_analyst.storage import get_run, read_enriched, read_tags
@@ -156,7 +157,9 @@ def compute_frozen_bounds(
         )
 
         # Call cluster_tags to perform the search
-        result = cluster_tags(tags, enriched, params_for_search)
+        # The analysis stage clusters the simple subset only (FORMULATION §6).
+        simple_subset, _ = apply_simplicity_filter(enriched, params)
+        result = cluster_tags(tags, simple_subset, params_for_search)
 
         # Extract threshold and search stats from result
         tag_distance_threshold = float(result.params_used["distance_threshold"])

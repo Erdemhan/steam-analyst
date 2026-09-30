@@ -663,6 +663,28 @@ def _complexity_bounds_frozen(settings) -> bool | None:
         return None
 
 
+def _top_games_frame(case_studies, n: int = 10) -> pd.DataFrame:
+    """Build the multi-parameter table of the top-n case-study games (ranked order)."""
+    rows = []
+    for c in list(case_studies)[:n]:
+        pct = c.review_positive_pct
+        price = c.price_usd
+        rows.append(
+            {
+                "Oyun": c.name,
+                "Grup": _group_name(c.archetype_label) if c.archetype_label else "-",
+                "Tahmini satış (adet)": round(c.estimated_sales_band[1]),
+                "Tahmini net gelir ($)": round(c.estimated_revenue_net_usd),
+                "Karmaşıklık (0-1)": round(c.complexity_score, 2),
+                "Olumlu yorum (%)": None if pct != pct else round(pct * 100),
+                "Yorum sayısı": c.review_count,
+                "Fiyat ($)": None if price != price else round(price, 2),
+                "Çıkış tarihi": c.release_date,
+            }
+        )
+    return pd.DataFrame(rows)
+
+
 def _render_simple_summary(report, bounds_frozen: bool | None = None) -> None:
     """Plain-language summary at the top of the detail page for non-expert readers."""
     try:
@@ -686,8 +708,10 @@ def _render_simple_summary(report, bounds_frozen: bool | None = None) -> None:
                 st.metric(
                     "Değerlendirilen oyun",
                     f"{funnel.candidate_count:,}",
-                    help="Yeterli yorumu olan, 2020 ve sonrası çıkmış, büyük "
-                    "yayıncılara ait olmayan oyunlar.",
+                    help="Yeterli yorumu olan, 2020 ve sonrası çıkmış ve bilinen büyük "
+                    "yayıncıların listesinde yer almayan oyunlar. Liste kapsamlı "
+                    "değildir, bu yüzden büyük yapımlar yine de girebilir. Sonuçlar "
+                    "yalnızca aşağıdaki 'basit sayılan' dilim üzerinden hesaplanır.",
                 )
             with col3:
                 st.metric(
@@ -754,6 +778,14 @@ def _render_simple_summary(report, bounds_frozen: bool | None = None) -> None:
                 names = ", ".join(c.name for c in top_cases)
                 st.markdown(
                     f"**Az emekle iyi satmış görünen örnekler:** {names}."
+                )
+                st.markdown(
+                    "**En elverişli 10 oyun** (tahmini net gelirin karmaşıklığa oranına "
+                    "göre sıralı; satış, gelir, karmaşıklık, yorum, fiyat ve çıkış tarihi "
+                    "birlikte gösterilir)"
+                )
+                st.dataframe(
+                    _top_games_frame(cases, 10), hide_index=True, width="stretch"
                 )
                 if not (matrix is not None and len(matrix) > 0):
                     frame = pd.DataFrame(

@@ -34,7 +34,16 @@ anything excluded here is invisible to every later stage (ARCHITECTURE.md limita
 | Release-date window | 2020-01-01 onward | Avoids mixing pre-/post- October 2019 review-prompt behaviour into one multiplier, see §2 |
 | AAA/large-publisher exclusion | publisher name blocklist (not a review-count ceiling) | Distinguishes "large-budget" from "organically viral," which review count alone cannot do |
 
-**Publisher blocklist — draft, not yet exhaustive.** Starting list: Electronic Arts,
+**Publisher blocklist — extended 2026-09-30 (user-approved).** The list in §8 adds
+large-budget publishers and studios that appeared among the heavy, high-complexity
+candidates of run 20260930T194128376Z-197441 (e.g. CD PROJEKT, Larian Studios, Game
+Science, PlayStation Publishing, Blizzard, Amazon Game Studios, Deep Silver, Paradox
+Interactive, Techland, NetEase, NEXON, KRAFTON, Valve), plus a few well-known
+publishers of the same scale. Matching is a case-insensitive substring match, so
+"Warner Bros Games" was shortened to "Warner Bros" (Steam writes "Warner Bros.
+Games", which the old entry never matched). The list remains non-exhaustive.
+
+Original starting list (kept for reference): Electronic Arts,
 Ubisoft, Activision, Activision Blizzard, Take-Two Interactive, Rockstar Games, 2K,
 Bethesda Softworks, ZeniMax, Square Enix, Capcom, Sega, Bandai Namco, Konami, Sony
 Interactive Entertainment, Microsoft Studios / Xbox Game Studios, Warner Bros Games,
@@ -240,6 +249,13 @@ interpretation because `C_i` is dimensionless.
 An archetype `k` is a tag cluster produced by `analysis.cluster_tags`, not a single
 tag and not a fixed Steam genre category.
 
+**Scope (user-approved 2026-09-30).** Clustering, `D_k`, `K_k`, `Σ_k`, the trend
+slopes and the tag summary are all computed over the simple subset of §3a (bottom
+40th percentile of `C_i`), not over the whole candidate set. Earlier drafts used the
+whole candidate set, which let large-budget titles that the simplicity filter itself
+rejects inflate the demand of the archetypes they fall into. Every "candidate set"
+reference below therefore means the simple subset.
+
 **✅ LOCKED (user-approved 2026-09-20) — clustering method.** Archetypes are formed by
 agglomerative hierarchical clustering over a Jaccard tag-distance matrix built from
 tag co-occurrence across the candidate set, with **no genre anchor** — consistent
@@ -337,7 +353,13 @@ publisher_blocklist = [
   "Take-Two Interactive", "Rockstar Games", "2K", "Bethesda Softworks",
   "ZeniMax", "Square Enix", "Capcom", "Sega", "Bandai Namco", "Konami",
   "Sony Interactive Entertainment", "Microsoft Studios", "Xbox Game Studios",
-  "Warner Bros Games", "Epic Games", "Devolver Digital",
+  "Warner Bros", "Epic Games", "Devolver Digital",
+  "CD PROJEKT", "Larian Studios", "Game Science", "PlayStation Publishing",
+  "Sony", "Microsoft", "Blizzard", "Amazon Game Studios", "Deep Silver",
+  "Focus Entertainment", "Paradox Interactive", "Techland", "Remedy Entertainment",
+  "IO Interactive", "NetEase", "NEXON", "KRAFTON", "Cygames", "Perfect World",
+  "Quantic Dream", "Prime Matter", "Valve", "Tencent", "Koei Tecmo", "Embracer",
+  "THQ Nordic", "Riot Games", "Gearbox",
 ]
 
 # --- enrichment: Boxleiter multipliers (FORMULATION.md §2) ---

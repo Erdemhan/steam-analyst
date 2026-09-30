@@ -258,6 +258,53 @@ class TestCaseStudyRendering:
         assert "bilinmiyor" in written
 
 
+class TestTopGamesFrame:
+    """The top-10 games table in the summary shows several parameters per game."""
+
+    @staticmethod
+    def _case(i: int, pct: float = 0.9, price: float = 9.99, net: float = 5000.0):
+        from steam_analyst.reporting.case_studies import CaseStudy
+
+        return CaseStudy(
+            appid=i,
+            name=f"Game {i}",
+            developer=f"Dev {i}",
+            release_date="2024-01-01",
+            price_usd=price,
+            review_count=100 + i,
+            review_positive_pct=pct,
+            estimated_sales_band=(1.0, 2000.0 + i, 3.0),
+            estimated_revenue_net_usd=net,
+            complexity_score=0.25,
+            top_tags=["2D"],
+            archetype_label="Archetype 1",
+            rationale="r",
+            complexity_drivers=[],
+            store_url="u",
+        )
+
+    def test_limits_to_ten_rows_in_ranked_order(self):
+        from steam_analyst.ui.pages import _top_games_frame
+
+        frame = _top_games_frame([self._case(i) for i in range(15)], 10)
+        assert len(frame) == 10
+        assert list(frame["Oyun"])[:2] == ["Game 0", "Game 1"]
+        assert {"Tahmini satış (adet)", "Tahmini net gelir ($)", "Karmaşıklık (0-1)",
+                "Olumlu yorum (%)", "Fiyat ($)", "Çıkış tarihi"} <= set(frame.columns)
+
+    def test_nan_fields_become_missing_not_errors(self):
+        from steam_analyst.ui.pages import _top_games_frame
+
+        frame = _top_games_frame([self._case(1, pct=float("nan"), price=float("nan"))])
+        assert pd.isna(frame.loc[0, "Olumlu yorum (%)"])
+        assert pd.isna(frame.loc[0, "Fiyat ($)"])
+
+    def test_empty_input_gives_empty_frame(self):
+        from steam_analyst.ui.pages import _top_games_frame
+
+        assert len(_top_games_frame([])) == 0
+
+
 class TestSessionKeysDiscipline:
     """Tests for session state discipline across all functions."""
 

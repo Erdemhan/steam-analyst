@@ -175,14 +175,15 @@ _OPEN_ITEMS = [
         "gerekiyor (FORMULATION.md kararı).",
     ),
     (
-        "Büyük (AAA) yapımlar kaba filtreden geçiyor",
-        "Kaba filtrenin yorum sayısı üst sınırı yok ve yayıncı kara listesi yalnızca 20 "
-        "isim içeriyor (CD Projekt, Larian, Game Science gibi yayıncılar yok). Bu yüzden "
-        "çok büyük bütçeli oyunlar da aday havuzuna giriyor. Sınırlar dondurulduğu için "
-        "bu oyunların karmaşıklık skoru artık yüksek çıkıyor ve basit sayılmıyorlar, "
-        "ancak aday havuzunda yer almaya devam ediyorlar.",
-        "Üst sınır ya da daha geniş kara liste eklenmesi FORMULATION.md §0 kararı "
-        "gerektiriyor.",
+        "Büyük (AAA) yapımlar kaba filtreden geçebiliyor",
+        "Kaba filtrenin yorum sayısı üst sınırı yok ve yayıncı kara listesi kapsamlı "
+        "olamaz. Liste genişletildi ancak listede olmayan yayıncıların büyük yapımları "
+        "aday havuzuna girebilir. Bu yüzden oyun grupları, talep, rekabet ve eğilim "
+        "hesapları yalnızca karmaşıklık skoru en düşük %40'lık 'basit sayılan' dilim "
+        "üzerinden yapılıyor. Sınırlar dondurulduğu için büyük yapımların karmaşıklık "
+        "skoru yüksek çıkıyor ve bu dilime girmiyorlar. Kara liste değişikliği yalnızca "
+        "yeni bir katalog taramasında etkili olur.",
+        "Yorum sayısı üst sınırı eklenmesi FORMULATION.md §0 kararı gerektiriyor.",
     ),
     (
         "Ücretsiz oyunların gelir tahmini",
