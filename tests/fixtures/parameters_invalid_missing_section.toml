@@ -1,0 +1,18 @@
+# Missing the entire [enrichment] section
+[acquisition.coarse_filter]
+min_review_count = 25
+earliest_release_date = "2020-01-01"
+include_free_to_play = true
+publisher_blocklist = ["Electronic Arts"]
+
+[acquisition]
+steamspy_page_delay_seconds = 0.5
+steam_requests_per_minute = 60.0
+max_retries = 3
+backoff_base_seconds = 1.0
+backoff_max_seconds = 60.0
+request_budget = 10000
+
+# [enrichment] is missing!
+
+# [analysis] is also missing

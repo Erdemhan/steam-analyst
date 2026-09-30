@@ -1,0 +1,31 @@
+{
+  "module": "storage",
+  "function_name": "write_enriched",
+  "file_path": "src/steam_analyst/storage/enriched.py",
+  "description": "Replaces a run's games_enriched rows transactionally, so re-running enrichment after a parameter change is idempotent (ADR-009).",
+  "signature": "def write_enriched(conn: sqlite3.Connection, run_id: str, frame: pd.DataFrame) -> int",
+  "docstring": "Replace the enriched-feature rows for a run.\n\nArgs:\n    conn: An open connection.\n    run_id: The run these rows belong to.\n    frame: A DataFrame whose columns match games_enriched's non-key columns exactly (appid plus every derived/raw feature column listed in 01_storage.module_spec.json). NULL/NaN values are written as SQL NULL, never coerced to 0 or an empty string.\n\nReturns:\n    The number of rows written (len(frame)).\n\nRaises:\n    StorageError: If frame is missing a required column, or run_id does not exist.\n",
+  "preconditions": [
+    "run_id already exists in runs",
+    "frame contains an 'appid' column with no duplicate values",
+    "every non-nullable column in the games_enriched schema is present in frame (even if all-NULL for that run)"
+  ],
+  "postconditions": [
+    "All prior games_enriched rows for run_id are gone and replaced atomically by frame's rows within a single transaction (DELETE then INSERT, or equivalent, never leaving a mixed old/new state visible to a concurrent reader under WAL)",
+    "NaN values in frame become SQL NULL, never 0 or ''",
+    "Calling write_enriched twice in a row with the same frame produces byte-for-byte identical stored rows (idempotence, per the enrichment module's own invariant)"
+  ],
+  "edge_cases": [
+    {"input": "An empty frame (0 rows)", "expected_behavior": "writes zero rows and returns 0 without raising, per the module spec's own edge case"},
+    {"input": "frame missing a required column, e.g. no 'complexity_score' column at all", "expected_behavior": "StorageError naming the missing column"},
+    {"input": "frame contains a duplicate appid", "expected_behavior": "StorageError, since (run_id, appid) is the primary key"},
+    {"input": "A NaN value in a float column (e.g. complexity_score for a row with too much missing data)", "expected_behavior": "stored as SQL NULL, read back as None via read_enriched, never as 0.0"}
+  ],
+  "unit_tests": [
+    {"name": "test_write_then_read_preserves_dtypes_and_nulls", "description": "A frame with a NaN complexity_score round-trips through write_enriched/read_enriched with None preserved.", "inputs": {}, "expected": "read_enriched shows complexity_score is None for that row"},
+    {"name": "test_empty_frame_writes_zero_rows", "description": "An empty DataFrame with correct columns writes 0 rows.", "inputs": {"frame": "empty DataFrame with full column set"}, "expected": 0},
+    {"name": "test_rerun_replaces_prior_rows", "description": "Writing a new frame for a run_id that already has rows removes the old ones entirely.", "inputs": {}, "expected": "read_enriched returns exactly the second frame's rows, none from the first"},
+    {"name": "test_missing_column_raises", "description": "A frame lacking 'review_count' raises StorageError.", "inputs": {}, "expected": "StorageError"}
+  ],
+  "dependencies": []
+}

@@ -1,0 +1,27 @@
+{
+  "module": "orchestration",
+  "function_name": "make_event_sink",
+  "file_path": "src/steam_analyst/orchestration/events.py",
+  "description": "Builds the concrete storage.EventSink instance passed into every stage entry point. This is the single place that decides event granularity (throttling), so a per-app loop inside acquisition cannot flood run_events with one row per request.",
+  "signature": "def make_event_sink(conn: sqlite3.Connection, run_id: str) -> EventSink",
+  "docstring": "Build an EventSink backed by storage.append_run_event.\n\nArgs:\n    conn: The same connection run_pipeline is using for this call. The sink does not open its own connection, since it is only ever called from the same thread and unit of work as the stage it reports for.\n    run_id: The run to attach every event to.\n\nReturns:\n    A callable satisfying storage.EventSink's Protocol (stage, level, message, progress) -> None, that calls storage.append_run_event(conn, run_id, stage=stage, level=level, message=message, progress=progress) with a light throttle: at most one 'info'-level progress event per configured interval (a fixed constant local to this function, e.g. every N calls or every T seconds -- see open_questions in 06_orchestration.module_spec.json, not yet decided) is actually written; 'warning' and 'error' level events are never throttled and are always written immediately, since a per-app failure must never be silently dropped by a rate limiter meant only for high-frequency progress noise.\n\nDoes NOT take a cancel_token parameter (deliberately -- cancellation is checked only at the seven enumerated CP1-CP7 check-points per ADR-015; the event sink is not one of them, and adding an unused parameter here would be exactly the kind of speculative addition the project avoids). If a sink implementation ever needs to react to cancellation directly, that is a new, separately-justified requirement to add then, not something to pre-wire now.\n",
+  "preconditions": [],
+  "postconditions": [
+    "Every 'warning' and 'error' level call results in an immediately committed run_events row -- never throttled",
+    "'info'-level calls may be silently dropped by the throttle, but at least the stage's first and last event for a given phase are never dropped (so a UI progress bar always shows a start and an end, never nothing)",
+    "The sink itself never raises -- an internal append_run_event failure is caught and logged, per storage.EventSink's own documented contract that a logging failure must never abort the pipeline stage using it"
+  ],
+  "edge_cases": [
+    {"input": "A tight loop calling the sink hundreds of times per second with level='info' (e.g. one call per appid in a large batch)", "expected_behavior": "throttled down to a small, bounded number of persisted rows for that burst, not one row per call"},
+    {"input": "A single 'error' event followed immediately by a burst of 'info' events", "expected_behavior": "the error is written immediately regardless of throttle state; the throttle window for subsequent info events is unaffected by the error having been written"},
+    {"input": "storage.append_run_event itself raises (e.g. conn was closed unexpectedly)", "expected_behavior": "caught and logged inside the sink, not propagated -- a stage's own real work must not fail because its progress-reporting call failed"},
+    {"input": "progress=None on a call that follows one with progress=0.5", "expected_behavior": "accepted; progress is not required to be monotonic or always present, per EventSink's own Protocol contract"}
+  ],
+  "unit_tests": [
+    {"name": "test_error_level_never_throttled", "description": "A burst of 100 'error'-level calls all result in 100 persisted run_events rows.", "inputs": {"level": "error", "count": 100}, "expected": "100 rows"},
+    {"name": "test_info_level_throttled_under_burst", "description": "A burst of 1000 'info'-level calls results in fewer than 1000 persisted rows.", "inputs": {"level": "info", "count": 1000}, "expected": "row count < 1000"},
+    {"name": "test_sink_never_raises_on_storage_failure", "description": "With append_run_event stubbed to raise, calling the sink does not propagate the exception.", "inputs": {}, "expected": "no exception raised by the sink call"},
+    {"name": "test_sink_matches_eventsink_protocol", "description": "The returned callable is accepted anywhere storage.EventSink is type-hinted (static check plus a runtime call with keyword arguments stage/level/message/progress).", "inputs": {}, "expected": "call succeeds with keyword arguments"}
+  ],
+  "dependencies": ["storage.EventSink", "storage.append_run_event"]
+}

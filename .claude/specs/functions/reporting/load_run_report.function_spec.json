@@ -1,0 +1,29 @@
+{
+  "module": "reporting",
+  "function_name": "load_run_report",
+  "file_path": "src/steam_analyst/reporting/report.py",
+  "description": "Single call that assembles everything the Analysis Detail page needs, read-only over storage.",
+  "signature": "def load_run_report(conn: sqlite3.Connection, run_id: str) -> RunReport",
+  "docstring": "Assemble a full run report.\n\nArgs:\n    conn: An open storage connection.\n    run_id: The run to report on.\n\nReturns:\n    A fully populated RunReport.\n\nRaises:\n    ReportNotAvailable: If run_id does not exist (storage.get_run returns None).\n\nSteps:\n    1. run_record = storage.get_run(conn, run_id); raise ReportNotAvailable if None.\n    2. stages = storage.read_run_stages(conn, run_id).\n    3. succeeded_stage_names = {s.stage for s in stages if s.status == 'succeeded'}; missing_stages = [s for s in ('acquisition', 'enrichment', 'analysis') if s not in succeeded_stage_names] (pipeline order preserved).\n    4. is_partial = is_partial_run(stages) (equivalently bool(missing_stages)).\n    5. Read each analysis_results type via storage.read_analysis_result; any missing type becomes an empty, correctly-columned frame rather than raising.\n    6. Build opportunity_matrix / tag_summary views. Call selection = select_case_studies(...) from storage.read_enriched + the tag_clusters assignments payload; set case_studies = selection.case_studies. Build funnel from the funnel_report payload plus the analysis stage's own rejected_by_reason.\n    7. caveats = interpretive_caveats(); if is_partial, append partial_run_caveat(missing_stages, run_record); if selection.archetype_cap_relaxed, append Caveat(key='archetype_cap_relaxed', title='Case-study diversity cap relaxed', body='Too few distinct archetypes were available to fill the case-study list without repeating one archetype more than the configured cap; the per-archetype cap was relaxed by one for this run only.', severity='info').\n",
+  "preconditions": [],
+  "postconditions": [
+    "Performs zero writes of any kind (reporting's own invariant)",
+    "Never raises for a run that exists but is incomplete -- only for a run_id that does not exist at all"
+  ],
+  "edge_cases": [
+    {"input": "run_id unknown", "expected_behavior": "ReportNotAvailable"},
+    {"input": "Run exists, status='running', analysis has not started", "expected_behavior": "returns a RunReport with is_partial=True and empty-but-well-formed analysis frames, per reporting's own edge case"},
+    {"input": "Run exists, status='failed'", "expected_behavior": "returns a RunReport with is_partial=True and run.error_message surfaced via the run field, per reporting's own edge case"},
+    {"input": "analysis_results present but represents a too-small candidate set (empty opportunity_matrix by design, not by failure)", "expected_behavior": "empty frames with an explanatory caveat entry, not an exception, per reporting's own edge case"},
+    {"input": "A field present in an older run's schema version that a newer code version no longer produces", "expected_behavior": "rendered as unavailable rather than raising, per reporting's own edge case for schema evolution"}
+  ],
+  "unit_tests": [
+    {"name": "test_load_run_report_fully_populated_fixture", "description": "A complete fixture database returns fully populated frames, per the module's own testing requirement.", "inputs": {}, "expected": "RunReport with all frames populated, is_partial=False"},
+    {"name": "test_unknown_run_id_raises", "description": "An unknown run_id raises ReportNotAvailable, per the module's own testing requirement.", "inputs": {"run_id": "does-not-exist"}, "expected": "ReportNotAvailable"},
+    {"name": "test_running_run_yields_partial_without_raising", "description": "A still-running run yields is_partial=True without raising, per the module's own testing requirement.", "inputs": {}, "expected": "is_partial == True, no exception"}
+  ],
+  "dependencies": ["RunReport", "ReportNotAvailable", "is_partial_run", "partial_run_caveat", "build_opportunity_matrix_view", "build_tag_summary_table", "select_case_studies", "CaseStudySelection", "interpretive_caveats", "FunnelSummary", "storage.read_run_stages"],
+  "integration_tests": [
+    {"name": "test_load_run_report_matches_expected_snapshot", "description": "tests/fixtures/run_report_fixture.sqlite produces output matching an expected snapshot of the rendered tables, per the module's own integration test.", "inputs": {}, "expected": "matches the stored snapshot"}
+  ]
+}

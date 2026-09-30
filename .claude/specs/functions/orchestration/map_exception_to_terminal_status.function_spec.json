@@ -1,0 +1,29 @@
+{
+  "module": "orchestration",
+  "function_name": "_map_exception_to_terminal_status",
+  "file_path": "src/steam_analyst/orchestration/pipeline.py",
+  "description": "Pure lookup extracted from run_pipeline so the terminal_status_mapping table (06_orchestration.module_spec.json) is exercised as its own testable unit rather than only indirectly through nine separate raise-and-inspect integration-style tests inline in run_pipeline's own tests.",
+  "signature": "def _map_exception_to_terminal_status(exc: BaseException, stage: str) -> tuple[str, str, str]",
+  "docstring": "Map a raised exception to (run_status, stage_status, error_message).\n\nArgs:\n    exc: The exception caught by run_pipeline's handler.\n    stage: The PipelineStage.value the exception occurred in, or RUN_LEVEL_STAGE if it occurred during preflight (before any stage began).\n\nReturns:\n    (run_status, stage_status, error_message) exactly per the terminal_status_mapping table: PipelineCancelled -> ('cancelled', 'cancelled', 'cancelled by user during {stage}'); KeyboardInterrupt/SystemExit -> ('cancelled', 'cancelled', 'interrupted during {stage}'); PreflightError -> ('failed', <no stage row, caller does not call finish_run_stage for this case>, the wrapped validation message); RequestBudgetExceeded -> ('failed', 'failed', budget/requests-made message); AcquisitionError/EnrichmentError/AnalysisError/StorageError/any other Exception -> ('failed', 'failed', '{stage}: {type(exc).__name__}: {exc}').\n\nDoes not raise. Does not write anything -- purely a lookup so run_pipeline's own exception handler stays a thin caller of this plus the actual storage writes.\n",
+  "preconditions": [
+    "stage is a PipelineStage.value or RUN_LEVEL_STAGE"
+  ],
+  "postconditions": [
+    "For PreflightError, the returned stage_status is a sentinel meaning 'do not call finish_run_stage' (e.g. None), since no run_stages row exists yet for a preflight failure",
+    "error_message never exceeds the column's sane length cap; anything longer is truncated with an explicit marker, and the full text still reaches run_events separately as run_pipeline's own responsibility, not this function's"
+  ],
+  "edge_cases": [
+    {"input": "exc is PipelineCancelled('enrichment')", "expected_behavior": "('cancelled', 'cancelled', \"cancelled by user during enrichment\")"},
+    {"input": "exc is a bare KeyboardInterrupt (no stage-specific payload)", "expected_behavior": "('cancelled', 'cancelled', f'interrupted during {stage}')"},
+    {"input": "exc is PreflightError wrapping a ParameterError", "expected_behavior": "('failed', None, the PreflightError's own message) -- run_pipeline must not call finish_run_stage when this sentinel is returned"},
+    {"input": "exc is a plain ValueError not matching any named category", "expected_behavior": "falls through to the 'any other Exception' row: ('failed', 'failed', f'{stage}: ValueError: {exc}')"},
+    {"input": "str(exc) contains a very long traceback-like multi-line message", "expected_behavior": "error_message is a single truncated line; the caller is responsible for logging the full text as a separate run_event, not this function"}
+  ],
+  "unit_tests": [
+    {"name": "test_pipelinecancelled_mapping", "description": "PipelineCancelled maps to the cancelled/cancelled row with the stage named in the message.", "inputs": {"exc": "PipelineCancelled('analysis')", "stage": "analysis"}, "expected": "('cancelled', 'cancelled', 'cancelled by user during analysis')"},
+    {"name": "test_preflighterror_mapping_has_no_stage_row", "description": "PreflightError's stage_status is the no-stage-row sentinel.", "inputs": {"exc": "PreflightError('bad weights')", "stage": "pipeline"}, "expected": "('failed', None, 'bad weights')"},
+    {"name": "test_generic_exception_mapping", "description": "An unrecognized exception type produces the fixed '{stage}: {Type}: {message}' format.", "inputs": {"exc": "ValueError('boom')", "stage": "enrichment"}, "expected": "('failed', 'failed', 'enrichment: ValueError: boom')"},
+    {"name": "test_all_nine_terminal_status_mapping_rows_covered", "description": "Table-driven test asserts every row of 06_orchestration.module_spec.json's terminal_status_mapping is reproduced exactly by this function.", "inputs": {}, "expected": "all 9 rows match"}
+  ],
+  "dependencies": ["PipelineCancelled", "PreflightError"]
+}

@@ -1,0 +1,26 @@
+{
+  "module": "acquisition",
+  "function_name": "fetch_app_details",
+  "file_path": "src/steam_analyst/acquisition/funnel.py",
+  "description": "Module-level orchestrating function (distinct from SteamStoreClient.fetch_app_details, the per-app HTTP call) that rate-limits and iterates appdetails fetches over every candidate appid, yielding RawPayload objects for persistence.",
+  "signature": "def fetch_app_details(client: SteamStoreClient, appids: Sequence[int], *, on_event: EventSink) -> Iterator[RawPayload]",
+  "docstring": "Fetch appdetails for every candidate appid.\n\nArgs:\n    client: A SteamStoreClient wrapping a RateLimiter-guarded HttpClient.\n    appids: FunnelResult.candidates['appid'].tolist(), the survivors of coarse_filter.\n    on_event: Progress sink; emits a 'fetch_progress' event roughly every N appids (implementation-chosen batch size) with progress = completed / len(appids), plus a 'warning' event for each individual failed appid so failures are visible in the run log without aborting the batch.\n\nYields:\n    One RawPayload(source='steam_appdetails', appid=..., http_status=..., payload=...) per appid attempted, including failures (payload with success=false, or a transport-error wrapper), per the invariant 'a failed per-app fetch degrades that app, never the run'.\n\nCalls client's own RateLimiter.acquire() once per appid before each request (via SteamStoreClient's internal client, per AcquisitionConfig.steam_requests_per_minute).\n",
+  "preconditions": [
+    "appids contains only positive integers, deduplicated by the caller (FunnelResult.candidates already has unique appid)"
+  ],
+  "postconditions": [
+    "Exactly one RawPayload is yielded per input appid, success or failure -- no appid is silently skipped",
+    "The function itself never raises for an individual app-level failure; it only raises for a budget exhaustion (RequestBudgetExceeded) or an unrecoverable client-level error"
+  ],
+  "edge_cases": [
+    {"input": "appids is empty (coarse filter produced zero candidates)", "expected_behavior": "yields nothing, emits a single 'warning' event, does not raise -- consistent with the acquisition module's 'empty candidate set after coarse filter' edge case"},
+    {"input": "RateLimiter.remaining_budget() reaches 0 partway through appids", "expected_behavior": "propagates RequestBudgetExceeded, stopping the generator; already-yielded RawPayload objects for earlier appids in this call remain valid and (if the caller persists incrementally via storage.upsert_raw_payloads in batches) are not lost"},
+    {"input": "A single appid's fetch returns success=false", "expected_behavior": "yielded as a RawPayload with that payload verbatim; counted as detail_failed by the caller (run_acquisition), not raised as an exception here"}
+  ],
+  "unit_tests": [
+    {"name": "test_yields_one_payload_per_appid_including_failures", "description": "10 appids, 2 of which are stubbed to return success=false, yields exactly 10 RawPayload objects.", "inputs": {"appids": "[10 fixture appids]"}, "expected": "10 RawPayload objects, 2 with success=false content"},
+    {"name": "test_empty_appids_yields_nothing_without_raising", "description": "An empty appids sequence yields an empty iterator and emits one warning event.", "inputs": {"appids": []}, "expected": "0 RawPayload objects, 1 warning event"},
+    {"name": "test_budget_exhaustion_propagates", "description": "A RateLimiter with request_budget=3 and 10 appids raises RequestBudgetExceeded after yielding 3 payloads.", "inputs": {"appids": "[10 appids]", "request_budget": 3}, "expected": "3 RawPayload objects yielded, then RequestBudgetExceeded"}
+  ],
+  "dependencies": ["SteamStoreClient.fetch_app_details", "RateLimiter.acquire", "RequestBudgetExceeded"]
+}

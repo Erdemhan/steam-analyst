@@ -1,0 +1,28 @@
+{
+  "module": "enrichment",
+  "function_name": "map_genre_bucket",
+  "file_path": "src/steam_analyst/enrichment/revenue.py",
+  "description": "Maps each app's Steam genre list onto one of FORMULATION.md section 2's three Boxleiter multiplier buckets, using a primary-genre selection rule since a title may report multiple genres.",
+  "signature": "def map_genre_bucket(genres: pd.Series, params: EnrichmentParams) -> pd.Series",
+  "docstring": "Map genre lists to multiplier buckets.\n\nArgs:\n    genres: A pd.Series of genre lists (already json.loads'd from genres_json), one list per appid, in the order Steam's appdetails API reports them (Steam's first-listed genre is generally its primary/marketing genre).\n    params: EnrichmentParams.genre_bucket_map, mapping an individual genre string to a bucket key.\n\nReturns:\n    A pd.Series of bucket key strings ('niche' | 'mainstream' | 'broad_audience'), one per appid. Bucket selection rule: use the FIRST genre in the row's list that has an entry in genre_bucket_map (in list order, i.e. respecting Steam's primary-genre-first convention); if none of the row's genres match any key in genre_bucket_map, or the genre list is empty, fall back to 'mainstream' (the documented default bucket, per FORMULATION.md section 2's explicit inclusion of 'unmatched/default' in that bucket's genre list).\n",
+  "preconditions": [
+    "Every value in genres is a list[str] (possibly empty), never None (normalize_features guarantees genres_json defaults to '[]')"
+  ],
+  "postconditions": [
+    "Every returned value is one of the three bucket keys present in params.boxleiter_multipliers",
+    "An unmatched or empty genre list always maps to 'mainstream', never raises"
+  ],
+  "edge_cases": [
+    {"input": "genres = []", "expected_behavior": "'mainstream' (default), counted in EnrichmentReport.unmatched_genre_count"},
+    {"input": "genres = ['Some Obscure Genre Not In The Map']", "expected_behavior": "'mainstream' (default), counted in unmatched_genre_count"},
+    {"input": "genres = ['Action', 'Strategy'] where 'Action' maps to broad_audience and 'Strategy' maps to niche", "expected_behavior": "'broad_audience' -- the FIRST matching genre in list order wins, per Steam's primary-genre-first convention, not an alphabetical or highest-multiplier tiebreak"},
+    {"input": "genres = ['Horror']", "expected_behavior": "'mainstream', per FORMULATION.md section 2's explicit note that Horror and RPG are deliberately mapped there as a neutral default"}
+  ],
+  "unit_tests": [
+    {"name": "test_first_matching_genre_wins", "description": "['Action','Strategy'] with Action->broad, Strategy->niche resolves to broad_audience.", "inputs": {"genres": ["Action", "Strategy"]}, "expected": "broad_audience"},
+    {"name": "test_unmatched_genre_falls_back_to_default", "description": "A genre absent from genre_bucket_map falls back to mainstream.", "inputs": {"genres": ["Obscure Genre"]}, "expected": "mainstream"},
+    {"name": "test_empty_genre_list_falls_back_to_default", "description": "An empty genre list falls back to mainstream.", "inputs": {"genres": []}, "expected": "mainstream"},
+    {"name": "test_horror_and_rpg_map_to_mainstream", "description": "['Horror'] and ['RPG'] both resolve to mainstream per FORMULATION.md.", "inputs": {"genres": ["Horror"]}, "expected": "mainstream"}
+  ],
+  "dependencies": []
+}

@@ -1,0 +1,23 @@
+{
+  "module": "config",
+  "function_name": "ParameterError",
+  "file_path": "src/steam_analyst/config/parameters.py",
+  "description": "Raised for any invalid or missing configuration value encountered by load_settings, validate_parameters or load_parameters. The single error type all of config's fallible entry points raise, so callers (orchestration's startup assertion, scripts/verify_parameters_consistency.py) can catch one exception type.",
+  "signature": "class ParameterError(Exception):\n    def __init__(self, message: str, *, path: Path | None = None, key: str | None = None) -> None: ...",
+  "docstring": "Configuration/parameter validation failure.\n\nArgs:\n    message: Human-readable, English-language description of what was wrong.\n    path: The file the error pertains to, if applicable (e.g. the missing or malformed parameters.toml).\n    key: The dotted section.key path of the offending value, if applicable (e.g. 'enrichment.storefront_cut').\n\nAttributes:\n    message, path, key are stored verbatim and included in str(err) so a run's error_message column (runs.error_message) captures enough detail to diagnose without re-running.\n",
+  "preconditions": [
+    "message is a non-empty string"
+  ],
+  "postconditions": [
+    "str(ParameterError(...)) includes message, and path/key when provided, in a single readable line"
+  ],
+  "edge_cases": [
+    {"input": "ParameterError('bad value') with no path or key", "expected_behavior": "str() returns exactly 'bad value'"},
+    {"input": "ParameterError('out of range', path=Path('parameters.toml'), key='enrichment.storefront_cut')", "expected_behavior": "str() includes all three pieces, e.g. 'out of range (parameters.toml: enrichment.storefront_cut)'"}
+  ],
+  "unit_tests": [
+    {"name": "test_str_with_no_context", "description": "Bare message renders unchanged.", "inputs": {"message": "bad value"}, "expected": "'bad value'"},
+    {"name": "test_str_with_path_and_key", "description": "Full context renders in a single readable string.", "inputs": {"message": "out of range", "path": "parameters.toml", "key": "enrichment.storefront_cut"}, "expected": "string containing 'out of range', 'parameters.toml', and 'enrichment.storefront_cut'"}
+  ],
+  "dependencies": []
+}

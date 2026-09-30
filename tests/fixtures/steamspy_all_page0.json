@@ -1,0 +1,47 @@
+{
+  "263060": {
+    "appid": 263060,
+    "name": "Dishonored",
+    "developer": "Arkane Studios",
+    "publisher": "Bethesda Softworks",
+    "positive": 12000,
+    "negative": 500,
+    "owners": "2000000",
+    "owners_low": 1000000,
+    "owners_high": 3000000,
+    "price": 1999,
+    "initialprice": 4999,
+    "discount": 60,
+    "tags": {"stealth": 100, "action": 95}
+  },
+  "570": {
+    "appid": 570,
+    "name": "Dota 2",
+    "developer": "Valve",
+    "publisher": "Valve",
+    "positive": 500000,
+    "negative": 100000,
+    "owners": "50000000",
+    "owners_low": 40000000,
+    "owners_high": 60000000,
+    "price": 0,
+    "initialprice": 0,
+    "discount": 0,
+    "tags": {"moba": 100, "multiplayer": 99}
+  },
+  "291920": {
+    "appid": 291920,
+    "name": "The Witcher 3: Wild Hunt",
+    "developer": "CD Projekt Red",
+    "publisher": "CD Projekt Red",
+    "positive": 200000,
+    "negative": 10000,
+    "owners": "20000000",
+    "owners_low": 15000000,
+    "owners_high": 25000000,
+    "price": 3999,
+    "initialprice": 5999,
+    "discount": 33,
+    "tags": {"rpg": 100, "action": 85}
+  }
+}

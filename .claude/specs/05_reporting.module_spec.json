@@ -1,0 +1,90 @@
+{
+  "module_id": "reporting",
+  "spec_version": "0.3.0",
+  "status": "planned",
+  "package_path": "src/steam_analyst/reporting",
+  "responsibility": "Read-only presentation layer for a completed run. Assembles the opportunity matrix view, the genre/tag summary table, the top-N case studies with a short rationale, and the fixed interpretive caveats. Returns objects for the UI to render; writes no files and no database rows.",
+  "changelog": [
+    "0.2.0 - is_partial is now derived from run_stages rather than inferred from runs.status, and RunReport carries the stage list so the UI can name which stage is missing (ADR-014, ADR-016). No new runs.status value was introduced; is_partial remains the only UI-visible partial/complete distinction (ADR-016).",
+    "0.3.0 - select_case_studies now returns CaseStudySelection (case_studies plus an archetype_cap_relaxed flag) instead of a bare list, giving the one-time diversity-cap relaxation an explicit, testable signal instead of only being detectable indirectly by the caller."
+  ],
+  "dependencies": {
+    "internal": ["storage", "config"],
+    "external": ["pandas"]
+  },
+  "design_notes": [
+    "Deliberately independent of the analysis module so any historical run can be rendered even after analysis logic changes shape. It reads persisted analysis_results and games_enriched only.",
+    "Case-study rationale text is assembled from stored numeric fields through fixed templates. No free-form generated prose, so a rendered claim always traces back to a stored value.",
+    "Every revenue or sales figure is rendered as a band with its caveat attached. A point estimate must never be displayed alone.",
+    "Partial-run handling is expressed through is_partial, not through an extra runs.status value. The run status vocabulary stays pending/running/succeeded/failed/cancelled (ADR-016)."
+  ],
+  "public_interface": [
+    {"name": "load_run_report", "kind": "function", "signature": "def load_run_report(conn: sqlite3.Connection, run_id: str) -> RunReport", "description": "Single call that assembles everything the Analysis Detail page needs, including the run's stage list. Raises ReportNotAvailable only when the run_id itself is unknown; a run with missing or incomplete stages returns a partial report instead of raising."},
+    {"name": "RunReport", "kind": "dataclass", "fields": ["run_id: str", "run: RunRecord", "stages: list[RunStage]", "opportunity_matrix: pd.DataFrame", "tag_summary: pd.DataFrame", "tag_trends: pd.DataFrame", "case_studies: list[CaseStudy]", "funnel: FunnelSummary", "headline_metrics: dict[str, Any]", "caveats: list[Caveat]", "is_partial: bool", "missing_stages: list[str]"]},
+    {"name": "is_partial_run", "kind": "function", "signature": "def is_partial_run(stages: Sequence[RunStage]) -> bool", "description": "The single definition of partial: {s.stage for s in stages if s.status == 'succeeded'} != {'acquisition', 'enrichment', 'analysis'}. Independent of runs.status by construction, so a run that is still running, was cancelled, failed, or crashed with the process all resolve to partial through the same rule. missing_stages is the complement of that set, in pipeline order."},
+    {"name": "CaseStudy", "kind": "dataclass", "fields": ["appid: int", "name: str", "developer: str", "release_date: str", "price_usd: float", "review_count: int", "review_positive_pct: float", "estimated_sales_band: tuple[float, float, float]", "estimated_revenue_net_usd: float", "complexity_score: float", "top_tags: list[str]", "archetype_label: str", "rationale: str", "complexity_drivers: list[tuple[str, float]]", "store_url: str"]},
+    {"name": "FunnelSummary", "kind": "dataclass", "fields": ["catalog_size: int", "candidate_count: int", "detail_fetched: int", "detail_failed: int", "simple_subset_size: int", "rejected_by_reason: dict[str, int]"], "description": "Makes the coarse filter's hard boundary visible in the UI, per ARCHITECTURE.md limitation 7. detail_fetched / detail_failed expose per-app fetch coverage, which is how a degraded but still 'succeeded' acquisition becomes visible to the user (ADR-016)."},
+    {"name": "Caveat", "kind": "dataclass", "fields": ["key: str", "title: str", "body: str", "severity: str"]},
+    {"name": "build_opportunity_matrix_view", "kind": "function", "signature": "def build_opportunity_matrix_view(matrix: pd.DataFrame, *, min_n: int | None = None, sort_by: str = 'opportunity_score') -> pd.DataFrame", "description": "Display-ready frame: rounded values, human-readable column names, sample size always present as a column."},
+    {"name": "build_tag_summary_table", "kind": "function", "signature": "def build_tag_summary_table(tag_summary: pd.DataFrame, *, top_n: int = 100) -> pd.DataFrame"},
+    {"name": "select_case_studies", "kind": "function", "signature": "def select_case_studies(enriched: pd.DataFrame, assignments: pd.DataFrame, *, top_n: int = 15, max_per_archetype: int = 2, max_per_developer: int = 1) -> CaseStudySelection", "description": "Ranks by effort_adjusted_return within the simple subset, then enforces archetype and developer diversity caps so the list does not collapse onto one studio or one genre. Returns CaseStudySelection rather than a bare list so the one-time max_per_archetype relaxation (see edge_cases) has an explicit signal; load_run_report unwraps case_studies and, when archetype_cap_relaxed, appends an extra Caveat."},
+    {"name": "CaseStudySelection", "kind": "dataclass", "fields": ["case_studies: list[CaseStudy]", "archetype_cap_relaxed: bool"]},
+    {"name": "build_rationale", "kind": "function", "signature": "def build_rationale(row: pd.Series, archetype_label: str) -> str", "description": "Template-filled sentence naming the concrete signals that put the game on the list (review volume, positivity, price, install size, achievement count, developer catalog size). Hedged wording only: 'plausibly small in scope', never 'took two weeks to build'."},
+    {"name": "interpretive_caveats", "kind": "function", "signature": "def interpretive_caveats() -> list[Caveat]", "description": "Returns the fixed caveat set mirroring ARCHITECTURE.md 'Known Limitations' items 1-7. The UI is required to render these on every result surface."},
+    {"name": "partial_run_caveat", "kind": "function", "signature": "def partial_run_caveat(missing_stages: Sequence[str], run: RunRecord) -> Caveat", "description": "Additional caveat appended when is_partial is True, naming the stages that did not succeed and surfacing runs.error_message. Severity 'warning' for a cancelled run, 'error' for a failed one."},
+    {"name": "headline_metrics", "kind": "function", "signature": "def headline_metrics(report: RunReport) -> dict[str, Any]", "description": "Small summary for the run list: catalog size, candidate count, detail fetch coverage, simple subset size, top archetype label, run duration."},
+    {"name": "ReportNotAvailable", "kind": "exception"}
+  ],
+  "persistence": {"reads": ["runs", "run_stages", "games_enriched", "game_tags", "analysis_results"], "writes": []},
+  "invariants": [
+    "The module performs no writes of any kind",
+    "is_partial has exactly one definition, is_partial_run over run_stages; no other code path may compute it from runs.status",
+    "Whenever is_partial is True the caveat list contains partial_run_caveat naming the missing stages",
+    "Every displayed sales or revenue number is accompanied by its estimate band and the relevant caveat key",
+    "Every aggregate row displays its sample size",
+    "Case-study rationale uses hedged language about effort; it may state observed signals but never asserts development time or cost",
+    "A run that stopped mid-pipeline still renders whatever stages completed"
+  ],
+  "edge_cases": [
+    "run_id does not exist -> ReportNotAvailable",
+    "Run exists but no stage has been attempted yet -> is_partial=True, missing_stages lists all three, all frames empty, no exception",
+    "Run status is 'running' -> partial report with whatever results are already committed; the write-ordering rule (ADR-016) guarantees that a stage reported as succeeded has its data committed",
+    "Run failed -> partial report plus the run's error_message surfaced through partial_run_caveat",
+    "Run cancelled -> same as failed but with severity 'warning', since cancellation is a user action rather than a defect",
+    "A stage row exists with status 'running' but no live worker (process died) -> treated as not succeeded, hence partial; reconciliation of runs.status is orchestration's job, not reporting's",
+    "Acquisition succeeded but detail_failed is a large share of candidate_count -> run is not partial, the coverage numbers are surfaced in FunnelSummary and headline_metrics instead",
+    "analysis_results present but empty (too little data) -> empty frames with an explanatory caveat, not an exception",
+    "Fewer candidates than top_n for case studies -> return what exists",
+    "Diversity caps making top_n unreachable -> fill up to the cap, then relax max_per_archetype once and record that it was relaxed",
+    "Missing optional fields on an older run (schema evolved) -> render the field as unavailable rather than raising",
+    "NaN or None in a displayed numeric column -> rendered as an explicit unavailable marker, never as 0"
+  ],
+  "testing": {
+    "unit": [
+      "load_run_report on a fixture database returns fully populated frames and is_partial=False when all three stages succeeded",
+      "load_run_report raises ReportNotAvailable for an unknown run_id",
+      "is_partial_run returns False only for the exact set of three succeeded stages, and True for every other combination including an extra unknown stage name",
+      "a run whose analysis stage is missing yields is_partial=True and missing_stages == ['analysis']",
+      "a still-running run yields is_partial=True without raising",
+      "a cancelled run produces partial_run_caveat with severity 'warning'; a failed run with severity 'error'",
+      "select_case_studies respects max_per_archetype and max_per_developer",
+      "select_case_studies returns fewer than top_n when the pool is smaller, without padding",
+      "build_rationale output contains the stored numeric signals and contains no unhedged effort claim (asserted against a forbidden-phrase list)",
+      "interpretive_caveats returns one caveat per ARCHITECTURE.md limitation and the keys are stable",
+      "NaN values render as the unavailable marker rather than 0"
+    ],
+    "integration": ["load_run_report over the fixture database matches an expected snapshot of the rendered tables, for both a complete and a stage-truncated run"],
+    "fixtures": ["tests/fixtures/run_report_fixture.sqlite", "tests/fixtures/run_report_partial_fixture.sqlite"]
+  },
+  "non_goals": [
+    "No file output (no CSV, PDF or Markdown export in v1)",
+    "No recomputation of any metric; everything comes from stored values",
+    "No cross-run comparison (ADR-011)",
+    "No Streamlit imports; the module must be usable and testable headless",
+    "No reconciliation or repair of run / stage status; reporting reads status, it never corrects it"
+  ],
+  "open_questions": [
+    "Default top_n for case studies (15 proposed)",
+    "Whether a CSV export button is wanted in v1, which would make this module write files"
+  ]
+}

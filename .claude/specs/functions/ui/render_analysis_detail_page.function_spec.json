@@ -1,0 +1,32 @@
+{
+  "module": "ui",
+  "function_name": "render_analysis_detail_page",
+  "file_path": "src/steam_analyst/ui/pages.py",
+  "description": "The results page -- opportunity matrix, tag summary, case studies, and every caveat this project's whole methodology depends on being visible. Addressed by query parameter, not session state, so it is refresh-safe and linkable (07_ui.module_spec.json's own design note).",
+  "signature": "def render_analysis_detail_page(conn: sqlite3.Connection, settings: Settings) -> None",
+  "docstring": "Render one run's results.\n\nArgs:\n    conn: This page's own short-lived connection.\n    settings: Unused directly here beyond what reporting/storage need, kept for signature consistency with the other two page functions.\n\nBehavior:\n    - run_id = st.query_params.get('run_id'); if missing or unknown (reporting.ReportNotAvailable), render a friendly empty state with a link back to Past Analyses, never a traceback.\n    - report = reporting.load_run_report(conn, run_id) -- called exactly once per rerun of this page.\n    - render_caveat_panel(report.caveats) is rendered near the top, before any figure, and again is implicitly required alongside every revenue/complexity-showing section per the module's own invariant ('every surface showing a sales, revenue or complexity figure also renders the caveat panel') -- in practice this means the panel appears once at the top of this page, since the whole page is one such surface.\n    - If report.is_partial: render reporting.partial_run_caveat(report.missing_stages, report.run) prominently above the results, and additionally render_progress_panel(settings.db_path, run_id) if report.run.status == 'running' (a still-live run can be watched from its own detail page, not only from the page that started it).\n    - Render report.opportunity_matrix, report.tag_summary, report.tag_trends, report.case_studies (each case study showing its rationale and complexity_drivers), and report.funnel (making the coarse-filter boundary from ARCHITECTURE.md limitation 7 visible, per the module's own design intent).\n    - Empty-but-legitimate results (report.funnel.candidate_count == 0, or too few games to cluster) render an explicit 'not enough data' message in place of a chart, never a blank or broken chart.\n",
+  "preconditions": [],
+  "postconditions": [
+    "load_run_report is called at most once per rerun of this page",
+    "partial_run_caveat is rendered whenever report.is_partial is True, and never when it is False",
+    "render_caveat_panel is rendered before any revenue or complexity figure on this page"
+  ],
+  "edge_cases": [
+    {"input": "run_id query parameter missing entirely", "expected_behavior": "empty state with a link to Past Analyses, no exception, no call to load_run_report"},
+    {"input": "run_id present but unknown (reporting.ReportNotAvailable)", "expected_behavior": "same empty state, caught explicitly around the load_run_report call"},
+    {"input": "report.is_partial is True and report.run.status == 'running'", "expected_behavior": "partial_run_caveat AND the live progress panel both render -- the user can watch it finish from the detail page itself, not just the page that started it"},
+    {"input": "report.is_partial is True and report.run.status == 'failed'", "expected_behavior": "partial_run_caveat renders with the error message; no progress panel (nothing is live to watch)"},
+    {"input": "report.funnel.candidate_count == 0", "expected_behavior": "an explicit 'not enough data' message in place of the opportunity matrix / tag summary charts, never an empty chart rendered as if there were simply zero rows to plot"},
+    {"input": "An older run whose schema predates a newly added field", "expected_behavior": "the missing field renders as an explicit unavailable marker, per reporting's own schema-evolution edge case -- this page must not assume every RunReport field is always present with a real value"}
+  ],
+  "unit_tests": [
+    {"name": "test_unknown_run_id_shows_empty_state", "description": "An unknown run_id in query_params renders the empty state, no exception.", "inputs": {"run_id": "does-not-exist"}, "expected": "no exception; empty-state text and a link rendered"},
+    {"name": "test_partial_report_renders_caveat_and_missing_stages", "description": "A partial (is_partial=True) fixture report renders partial_run_caveat naming report.missing_stages.", "inputs": {}, "expected": "caveat rendered; missing stage names appear in output"},
+    {"name": "test_running_partial_report_shows_progress_panel_too", "description": "A running, partial report additionally renders the progress panel.", "inputs": {"status": "running"}, "expected": "both partial_run_caveat and render_progress_panel invoked"},
+    {"name": "test_failed_partial_report_no_progress_panel", "description": "A failed, partial report does not render the progress panel.", "inputs": {"status": "failed"}, "expected": "partial_run_caveat invoked; render_progress_panel not invoked"},
+    {"name": "test_complete_report_no_partial_caveat", "description": "A fully succeeded fixture report never renders partial_run_caveat.", "inputs": {}, "expected": "partial_run_caveat not called"},
+    {"name": "test_caveat_panel_always_present", "description": "render_caveat_panel is called on every render of this page, complete or partial.", "inputs": {}, "expected": "called exactly once per page render"},
+    {"name": "test_empty_candidate_set_shows_not_enough_data", "description": "A fixture with funnel.candidate_count == 0 shows the explicit message instead of a chart.", "inputs": {}, "expected": "'not enough data' text present; no chart component rendered for the opportunity matrix"}
+  ],
+  "dependencies": ["reporting.load_run_report", "reporting.ReportNotAvailable", "reporting.partial_run_caveat", "render_caveat_panel", "render_progress_panel"]
+}

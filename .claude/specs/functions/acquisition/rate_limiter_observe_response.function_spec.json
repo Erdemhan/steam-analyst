@@ -1,0 +1,29 @@
+{
+  "module": "acquisition",
+  "function_name": "RateLimiter.observe_response",
+  "file_path": "src/steam_analyst/acquisition/rate_limiter.py",
+  "description": "Feeds back the outcome of a completed request so the limiter can honour Retry-After and widen its interval after repeated 429/5xx responses.",
+  "signature": "def observe_response(self, status_code: int, headers: Mapping[str, str]) -> None",
+  "docstring": "Update limiter state from a response.\n\nArgs:\n    status_code: The HTTP status code received.\n    headers: Response headers, case-insensitively checked for 'Retry-After'.\n\nEffects:\n    On 429 with a parseable Retry-After header, the next acquire() call waits at least that many seconds, and the limiter's base interval is widened by a fixed multiplicative factor for the remainder of the run (invariant from the acquisition module spec's edge case: 'repeated 429 widens the base interval for the rest of the run'). On any 5xx, no interval widening occurs here (HttpClient's own backoff handles 5xx retries at the request level); observe_response only tracks 429s for interval widening. On 2xx/3xx/4xx-other, no state change beyond bookkeeping.\n",
+  "preconditions": [
+    "status_code is a valid HTTP status integer"
+  ],
+  "postconditions": [
+    "After a 429 with Retry-After: N, the next acquire() call's wait is at least N seconds",
+    "After two consecutive 429s within the same run, the limiter's steady-state interval is strictly larger than its initial configured interval",
+    "A subsequent successful (2xx) response does not shrink the interval back down within the same run (widening is monotonic per run, matching the conservative 'defaults are deliberately pessimistic' design note)"
+  ],
+  "edge_cases": [
+    {"input": "status_code=429, headers without a Retry-After key", "expected_behavior": "falls back to the multiplicative backoff widening only, no explicit fixed-duration wait is injected"},
+    {"input": "status_code=429, Retry-After='120' (seconds form)", "expected_behavior": "next acquire() waits at least 120 seconds"},
+    {"input": "status_code=429, Retry-After='<HTTP-date>' (date form, e.g. 'Wed, 21 Oct 2026 07:28:00 GMT')", "expected_behavior": "parsed as an absolute time and converted to a relative wait; a date already in the past yields a wait of 0, not a negative number"},
+    {"input": "status_code=200", "expected_behavior": "no interval change; existing widening (if any) from earlier in the run persists"}
+  ],
+  "unit_tests": [
+    {"name": "test_retry_after_seconds_form_widens_wait", "description": "Retry-After: 5 causes the next acquire() to wait at least 5 simulated seconds.", "inputs": {"status_code": 429, "headers": {"Retry-After": "5"}}, "expected": "next acquire() wait >= 5.0"},
+    {"name": "test_retry_after_http_date_form_parsed", "description": "An HTTP-date Retry-After in the near future is converted to a correct relative wait.", "inputs": {"status_code": 429, "headers": {"Retry-After": "<fixture future date>"}}, "expected": "next acquire() wait matches the date-derived delta within 1 second"},
+    {"name": "test_repeated_429_widens_base_interval", "description": "Two consecutive 429 observations leave the limiter's steady-state interval larger than its construction-time value.", "inputs": {}, "expected": "interval_after > interval_initial"},
+    {"name": "test_success_does_not_reset_widening", "description": "A 200 after two 429s does not shrink the interval back down.", "inputs": {}, "expected": "interval unchanged by the 200 observation"}
+  ],
+  "dependencies": []
+}

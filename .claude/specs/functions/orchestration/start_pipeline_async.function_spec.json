@@ -1,0 +1,31 @@
+{
+  "module": "orchestration",
+  "function_name": "start_pipeline_async",
+  "file_path": "src/steam_analyst/orchestration/runner.py",
+  "description": "Creates the run row synchronously, then hands off to a background worker thread and returns immediately so the UI can begin polling without blocking the Streamlit script thread (ADR-006, ADR-017).",
+  "signature": "def start_pipeline_async(db_path: Path, config: PipelineConfig, *, settings: Settings | None = None) -> str",
+  "docstring": "Start a new run in the background and return its id immediately.\n\nArgs:\n    db_path: Never a connection (ADR-017). A short-lived connection is opened on the calling thread just to create the run row, then closed before the worker starts.\n    config: This run's PipelineConfig. start_stage is normally ACQUISITION here; a non-ACQUISITION start_stage for a brand-new run_id is legal but unusual (a deliberate partial re-run is more commonly done via resume_run against an EXISTING run_id).\n    settings: Loaded via config.load_settings() if not given.\n\nReturns:\n    The new run_id, available immediately (before the pipeline has done any real work).\n\nSequence:\n    1. If settings is None, settings = config.load_settings().\n    2. parameters_version = config.parameters_version(settings.parameters_path) -- a cheap file hash, computed before any parameter parsing/validation (see storage.create_run's own docstring for why this ordering matters).\n    3. with storage.connect(db_path) as conn: run_id = storage.create_run(conn, config=config.to_dict(), parameters_version=parameters_version, trigger_type='manual', notes=config.notes) -- this connection is opened, used, and closed entirely on the calling thread, before the worker thread exists.\n    4. cancel_event = threading.Event(); register (cancel_event, db_path) into _CANCEL_REGISTRY[run_id] under the module lock.\n    5. Start a non-daemon threading.Thread whose target: opens its own connection via storage.connect(db_path) as its first statement, calls run_pipeline(conn, run_id, config, settings=settings, cancel_token=cancel_event) inside a try/except that catches every exception (an exception escaping a thread target is invisible -- the target itself already wrote the terminal status via run_pipeline before this outer catch, so the catch here only prevents a silent thread death, it does not re-handle status), and in a finally: removes run_id from _CANCEL_REGISTRY and closes its own connection.\n    6. Return run_id, before the thread has necessarily done any work.\n",
+  "preconditions": [
+    "db_path's parent directory exists or is creatable (delegated to storage.get_connection)",
+    "run_id is not already registered in _CANCEL_REGISTRY (impossible by construction since create_run always returns a fresh id)"
+  ],
+  "postconditions": [
+    "The returned run_id has a runs row with status 'pending' or 'running' immediately after this call returns, readable by a separate connection on any thread",
+    "is_running(run_id) is True immediately after this call returns and remains True until the worker's finally block runs",
+    "No sqlite3.Connection object is returned or held by this function past step 3"
+  ],
+  "edge_cases": [
+    {"input": "config.load_parameters would fail (bad parameters.toml)", "expected_behavior": "not detected here -- start_pipeline_async only computes the cheap parameters_version hash, never calls load_parameters; the failure surfaces later inside the worker as PreflightError, with the run row already visible in the run list as required"},
+    {"input": "storage.create_run itself raises (e.g. db_path unwritable)", "expected_behavior": "propagates directly to the caller (the UI's Start button handler); no thread is started, no run_id is returned, since there is nothing to poll for"},
+    {"input": "The worker thread's target raises an exception that escapes run_pipeline's own status-writing try/except (a bug in run_pipeline itself)", "expected_behavior": "the outer catch in the thread target logs it (e.g. to stderr) so it is not silently swallowed, but does not attempt to write a status a second time; this is a defense against a genuinely unexpected failure mode, not the normal path"},
+    {"input": "Called twice in rapid succession from the same Streamlit session (double-click on Start)", "expected_behavior": "each call creates its own independent run_id and its own worker; the UI's own 'Start disabled while active_run_ids() is non-empty' rule (07_ui.module_spec.json) is what prevents this in practice, not this function"}
+  ],
+  "unit_tests": [
+    {"name": "test_returns_run_id_immediately", "description": "start_pipeline_async returns before the stubbed pipeline has finished (asserted with a stage stub that blocks on an Event the test controls).", "inputs": {}, "expected": "call returns quickly; run_id is a valid, freshly created id"},
+    {"name": "test_run_row_visible_before_return", "description": "Immediately after return, a separate connection can read the run row via storage.get_run.", "inputs": {}, "expected": "get_run(run_id) returns a RunRecord with status in {'pending','running'}"},
+    {"name": "test_is_running_true_then_false_after_completion", "description": "is_running(run_id) is True right after start, and becomes False once the stubbed pipeline completes.", "inputs": {}, "expected": "True immediately, False after the worker's finally runs"},
+    {"name": "test_no_connection_returned_or_leaked", "description": "A connection-factory spy asserts exactly one open/close pair on the calling thread for run creation, separate from the worker thread's own open/close pair.", "inputs": {}, "expected": "two independent open/close pairs, none crossing threads"},
+    {"name": "test_create_run_failure_starts_no_thread", "description": "If storage.create_run raises, no thread is started and the exception propagates.", "inputs": {}, "expected": "exception propagates, active_run_ids() stays empty"}
+  ],
+  "dependencies": ["PipelineConfig", "run_pipeline", "storage.connect", "storage.create_run", "config.load_settings", "config.parameters_version"]
+}

@@ -1,0 +1,73 @@
+{
+  "module_id": "analysis",
+  "spec_version": "0.1.0",
+  "status": "planned",
+  "package_path": "src/steam_analyst/analysis",
+  "responsibility": "Stage three. Apply the simplicity threshold, cluster tag co-occurrence into archetypes, measure per-archetype demand, competition density and release-date trends, and assemble the opportunity matrix. Writes aggregate outputs into analysis_results.",
+  "dependencies": {
+    "internal": ["storage", "config"],
+    "external": ["pandas", "numpy", "scikit-learn or scipy (clustering; see open questions)"]
+  },
+  "design_notes": [
+    "Pure transformation over games_enriched and game_tags. Re-runnable for an existing run_id after a threshold change, with no refetch.",
+    "An archetype is a tag/genre cluster, not a single tag. Single-tag views are still produced for the tag summary table, but the opportunity matrix is cluster-level.",
+    "Competition density is measured over past releases and describes the market those games entered, not today's market. This framing must survive into the output labels.",
+    "All results are descriptive. No causal or predictive claim is attached to a trend slope, and every aggregate carries its sample size."
+  ],
+  "public_interface": [
+    {"name": "apply_simplicity_filter", "kind": "function", "signature": "def apply_simplicity_filter(frame: pd.DataFrame, params: AnalysisParams) -> tuple[pd.DataFrame, dict[str, int]]", "description": "Splits the enriched frame into the 'buildable' subset and a rejection tally. Rows with NULL complexity_score are excluded from the subset but remain available for density counting."},
+    {"name": "cluster_tags", "kind": "function", "signature": "def cluster_tags(tags: pd.DataFrame, frame: pd.DataFrame, params: AnalysisParams) -> TagClusterResult", "description": "Builds a tag co-occurrence matrix over the candidate set and clusters it into archetypes. Each cluster gets a deterministic id and a human-readable label built from its highest-weight member tags."},
+    {"name": "TagClusterResult", "kind": "dataclass", "fields": ["assignments: pd.DataFrame", "cluster_labels: dict[int, str]", "cluster_members: dict[int, list[str]]", "cooccurrence: pd.DataFrame", "method: str", "params_used: dict"]},
+    {"name": "compute_tag_trends", "kind": "function", "signature": "def compute_tag_trends(frame: pd.DataFrame, assignments: pd.DataFrame, params: AnalysisParams) -> pd.DataFrame", "description": "Per archetype, median estimated sales and release count per sub-window across the trailing window, plus a slope. Every row carries n per sub-window."},
+    {"name": "compute_competition_density", "kind": "function", "signature": "def compute_competition_density(frame: pd.DataFrame, assignments: pd.DataFrame, params: AnalysisParams) -> pd.DataFrame", "description": "Release count per archetype inside the trailing window, adjusted for overall catalog growth so a rising tide is not read as rising competition."},
+    {"name": "compute_demand", "kind": "function", "signature": "def compute_demand(frame: pd.DataFrame, assignments: pd.DataFrame, params: AnalysisParams) -> pd.DataFrame", "description": "Per archetype, median estimated sales and median review count over the trailing window, with the interquartile range retained so a single outlier hit is visible rather than hidden in a median."},
+    {"name": "build_opportunity_matrix", "kind": "function", "signature": "def build_opportunity_matrix(demand: pd.DataFrame, competition: pd.DataFrame, simplicity: pd.DataFrame, params: AnalysisParams) -> pd.DataFrame", "description": "Implements FORMULATION.md section 6. Columns: cluster_id, label, n_games, demand_z, competition_z, simplicity_z, opportunity_score, median_estimated_sales_mid, median_complexity, releases_in_window."},
+    {"name": "build_tag_summary", "kind": "function", "signature": "def build_tag_summary(frame: pd.DataFrame, tags: pd.DataFrame, params: AnalysisParams) -> pd.DataFrame", "description": "Single-tag view: per tag, game count, median complexity, median estimated sales, median positive review percentage, median price."},
+    {"name": "run_analysis", "kind": "function", "signature": "def run_analysis(conn: sqlite3.Connection, run_id: str, params: AnalysisParams, *, parameters_version: str, on_event: EventSink) -> AnalysisReport", "description": "Stage entry point. Reads games_enriched and game_tags, writes analysis_results rows of type opportunity_matrix, tag_summary, tag_clusters, tag_trends and competition_density."},
+    {"name": "AnalysisReport", "kind": "dataclass", "fields": ["run_id: str", "candidates_in: int", "simple_subset_size: int", "rejected_by_reason: dict[str, int]", "cluster_count: int", "scored_cluster_count: int", "clusters_below_min_size: int", "duration_seconds: float"]},
+    {"name": "AnalysisError", "kind": "exception"}
+  ],
+  "persistence": {"reads": ["games_enriched", "game_tags"], "writes": ["analysis_results", "run_events"]},
+  "invariants": [
+    "Every aggregate row carries its sample size (n_games); no median is published without it",
+    "Clusters smaller than min_cluster_size are excluded from opportunity scoring and reported separately, never dropped silently",
+    "Clustering is deterministic for a fixed input and seed; cluster ids are stable within a run",
+    "z-scores are computed over the scored cluster population of the same run and are therefore comparable within a run but not across runs",
+    "All parameters come from AnalysisParams; no threshold literal appears in code"
+  ],
+  "edge_cases": [
+    "Empty or tiny candidate set (fewer rows than min_cluster_size) -> stage succeeds, writes empty results with an explanatory warning event; the UI must render 'not enough data' rather than an empty chart",
+    "Zero-variance feature when computing z-scores -> z defined as 0 for all clusters rather than a division by zero",
+    "A single archetype dominating the candidate set -> reported, since a near-degenerate clustering invalidates comparison",
+    "Games with an unparseable release_date -> excluded from trend and density windows, included in overall medians, and counted",
+    "Tags below min_tag_votes -> excluded before clustering",
+    "Games carrying no tags at all -> excluded from clustering, retained in the tag-independent summaries",
+    "Trailing window containing fewer than two sub-windows -> no slope computed, field left NULL rather than estimated from one point",
+    "Ties in opportunity_score -> deterministic ordering by cluster_id"
+  ],
+  "testing": {
+    "unit": [
+      "apply_simplicity_filter honours the threshold at the boundary and tallies each rejection reason",
+      "cluster_tags is deterministic across repeated calls on the same input",
+      "cluster_tags on a synthetic set with two obviously separated tag groups recovers exactly those two clusters",
+      "compute_competition_density normalizes for catalog growth as specified on a synthetic two-year catalog",
+      "compute_demand retains the interquartile range and the outlier is visible in it",
+      "build_opportunity_matrix reproduces hand-computed z-scores and the weighted combination",
+      "zero-variance inputs produce z=0 rather than NaN or a raised exception",
+      "clusters below min_cluster_size are excluded from scoring and appear in clusters_below_min_size",
+      "an empty enriched frame produces an empty but well-formed result set"
+    ],
+    "integration": ["run_analysis over a fixture database writes all five analysis_types with the expected schemas"],
+    "fixtures": ["tests/fixtures/enriched_small.csv", "tests/fixtures/tags_small.csv"]
+  },
+  "non_goals": [
+    "No presentation formatting, no chart objects, no case-study prose (that is reporting)",
+    "No cross-run comparison",
+    "No predictive modelling or forecasting of future demand"
+  ],
+  "open_questions": [
+    "Clustering method: co-occurrence + hierarchical/agglomerative clustering is the straw man. Alternatives are community detection on a tag graph or simple frequent-itemset mining. Needs a decision before implementation, and the choice must be recorded in FORMULATION.md section 6.",
+    "Whether an archetype should be anchored to the primary genre plus its top-k tags rather than derived purely from tag co-occurrence.",
+    "Catalog-growth adjustment for competition density: normalize by total releases in the same window, or by a fitted growth curve."
+  ]
+}

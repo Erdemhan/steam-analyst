@@ -86,10 +86,12 @@ def build_opportunity_matrix_view(
     if min_n is not None:
         result = result[result["n_games"] >= min_n].copy()
 
-    # Round numeric columns according to the spec
+    # Round numeric columns according to the spec. Coerce first: an all-None
+    # column round-trips through JSON storage as object dtype, not float64,
+    # and .round() raises on object dtype even when every value is numeric-or-None.
     for col, decimals in ROUNDING_SPECS.items():
         if col in result.columns and col != "n_games":
-            result[col] = result[col].round(decimals)
+            result[col] = pd.to_numeric(result[col], errors="coerce").round(decimals)
 
     # Sort by the specified column (descending)
     result = result.sort_values(by=sort_by, ascending=False, na_position="last")
@@ -151,10 +153,13 @@ def build_tag_summary_table(
     # Limit to top_n rows (return all if fewer than top_n)
     result = result.head(top_n)
 
-    # Round numeric columns according to the spec
+    # Round numeric columns according to the spec. A column that is all-None
+    # (e.g. every row lacked review data) round-trips through JSON storage as
+    # object dtype, not float64 -- coerce first so .round() never raises on a
+    # genuinely numeric-but-object-typed column; non-numeric values become NaN.
     for col, decimals in ROUNDING_SPECS.items():
         if col in result.columns and col != "n_games":
-            result[col] = result[col].round(decimals)
+            result[col] = pd.to_numeric(result[col], errors="coerce").round(decimals)
 
     # Rename columns to human-readable names
     rename_map = {

@@ -1,0 +1,27 @@
+{
+  "module": "storage",
+  "function_name": "delete_run",
+  "file_path": "src/steam_analyst/storage/runs.py",
+  "description": "Explicit user action only. Deletes a run and cascades to every run-keyed table via ON DELETE CASCADE foreign keys.",
+  "signature": "def delete_run(conn: sqlite3.Connection, run_id: str) -> None",
+  "docstring": "Delete a run and all of its data.\n\nArgs:\n    conn: An open connection with foreign_keys=ON (guaranteed by get_connection).\n    run_id: The run to delete.\n\nReturns:\n    None.\n\nNote:\n    A no-op, not an error, when run_id does not exist -- deletion is idempotent from the caller's perspective (ARCHITECTURE.md retention policy: 'Deletion is an explicit user action that cascades across all run-keyed tables').\n",
+  "preconditions": [],
+  "postconditions": [
+    "After a successful call, get_run(conn, run_id) is None",
+    "No rows referencing run_id remain in run_events, raw_games, games_enriched, game_tags or analysis_results",
+    "Calling delete_run again on the same (now-absent) run_id is a no-op, not an error"
+  ],
+  "edge_cases": [
+    {"input": "run_id does not exist", "expected_behavior": "no-op; returns None without raising"},
+    {"input": "run_id is referenced as another run's parent_run_id", "expected_behavior": "the child run's parent_run_id becomes dangling; since parent_run_id has no ON DELETE action specified in the schema, this is either left as-is (orphaned reference, acceptable since parent_run_id is reserved/unused in v1) or must set NULL -- flagged as an open question below since 01_storage.module_spec.json's schema string does not specify ON DELETE behavior for runs.parent_run_id"},
+    {"input": "Deleting a run that is currently 'running' (mid-pipeline)", "expected_behavior": "storage performs the deletion unconditionally; preventing deletion of an in-flight run is orchestration's/ui's responsibility, not storage's"}
+  ],
+  "unit_tests": [
+    {"name": "test_delete_run_cascades_to_all_tables", "description": "A fully populated synthetic run (rows in all five child tables) is fully removed after delete_run.", "inputs": {}, "expected": "zero rows remain in run_events, raw_games, games_enriched, game_tags, analysis_results for that run_id"},
+    {"name": "test_delete_unknown_run_is_noop", "description": "Deleting a nonexistent run_id does not raise.", "inputs": {"run_id": "does-not-exist"}, "expected": "None, no exception"}
+  ],
+  "dependencies": ["get_run"],
+  "open_questions": [
+    "01_storage.module_spec.json's `runs` table string does not specify ON DELETE behavior for the self-referential parent_run_id foreign key. Needs an explicit decision (SET NULL vs. RESTRICT vs. leave unspecified/default RESTRICT) before delete_run's contract for a run that is someone else's parent is fully determined; currently assumed low-impact since parent_run_id is unused (always NULL) in v1."
+  ]
+}

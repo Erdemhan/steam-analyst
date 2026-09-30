@@ -1,0 +1,27 @@
+{
+  "module": "acquisition",
+  "function_name": "SteamStoreClient.fetch_app_details",
+  "file_path": "src/steam_analyst/acquisition/steam_store_client.py",
+  "description": "Wraps the Steam Web API / storefront appdetails endpoint. Country and language are pinned to the locked, non-configurable values 'us' and 'english' (ARCHITECTURE.md Data Sources: Locale pinning, user-approved 2026-09-20).",
+  "signature": "def fetch_app_details(self, appid: int) -> tuple[int, dict]",
+  "docstring": "Fetch appdetails for one appid, pinned to cc=us&l=english.\n\nArgs:\n    appid: The Steam application id.\n\nReturns:\n    (status_code, payload) from HttpClient.get_json. On success, payload is Steam's {\"<appid>\": {\"success\": true, \"data\": {...}}} shape, persisted verbatim.\n\nDEVIATION FROM 02_acquisition.module_spec.json (flag to user): the module spec's public_interface still lists this method as `fetch_app_details(self, appid: int, *, country: str = 'us', language: str = 'english')`, i.e. caller-overridable with defaults. ARCHITECTURE.md's Data Sources section, updated 2026-09-20 (Locale pinning), locks cc=us&l=english as 'a fixed acquisition-stage setting, not a per-run option' -- explicitly not configurable. This FunctionSpec follows ARCHITECTURE.md (the more recently locked, more authoritative source per this project's own precedence rule that ARCHITECTURE.md and FORMULATION.md are user-locked records) and drops the country/language parameters entirely, hard-coding cc=us&l=english as module-level constants inside steam_store_client.py. 02_acquisition.module_spec.json should be updated to match; until then this is a known spec-vs-spec inconsistency, not a design decision made unilaterally here.\n",
+  "preconditions": [
+    "appid > 0",
+    "self.settings.steam_web_api_key is not required for appdetails (it is a public, unauthenticated storefront endpoint) -- only the reviews endpoint and certain Steam Web API calls require a key; this is called out explicitly since AcquisitionError for a missing key must not be raised here"
+  ],
+  "postconditions": [
+    "Every call to this method requests exactly cc=us and l=english, regardless of any run-level configuration",
+    "Returns the tuple as-is from HttpClient.get_json, with no post-processing (parsing happens in enrichment.normalize_features, not here)"
+  ],
+  "edge_cases": [
+    {"input": "appdetails returns {\"<appid>\": {\"success\": false}}", "expected_behavior": "returned unchanged as (200, {...success: false...}); caller (fetch_app_details module function) counts this as detail_failed but still persists it verbatim"},
+    {"input": "appid corresponds to a non-game app_type (dlc, demo, video, music, tool)", "expected_behavior": "returned unchanged; exclusion by app_type happens in enrichment, not here, per the module's non_goals"},
+    {"input": "Steam Web API is temporarily geo-blocking the configured 'us' region for a specific title", "expected_behavior": "returned as whatever status/payload Steam actually sends (e.g. success:false); not specially detected or retried differently"}
+  ],
+  "unit_tests": [
+    {"name": "test_always_requests_us_english_locale", "description": "Inspecting the constructed request params for any call shows cc=us and l=english regardless of any config value passed into the client.", "inputs": {"appid": 123456}, "expected": "request params include cc=us, l=english"},
+    {"name": "test_success_false_payload_persisted_unchanged", "description": "tests/fixtures/appdetails_failure.json is returned unchanged.", "inputs": {}, "expected": "(200, <fixture content with success: false>)"},
+    {"name": "test_success_true_payload_persisted_unchanged", "description": "tests/fixtures/appdetails_success.json is returned unchanged.", "inputs": {}, "expected": "(200, <fixture content>)"}
+  ],
+  "dependencies": ["HttpClient.get_json"]
+}

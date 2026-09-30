@@ -1,0 +1,26 @@
+{
+  "module": "storage",
+  "function_name": "read_fetched_appids",
+  "file_path": "src/steam_analyst/storage/raw.py",
+  "description": "Returns the set of appids already persisted for a given run and source, so acquisition can skip re-fetching them when a stage is re-attempted after a crash or a cooperative cancellation (ADR-014). This is what makes stage-granular resume cheap: acquisition calls this before each batch and only requests appids missing from the returned set.",
+  "signature": "def read_fetched_appids(conn: sqlite3.Connection, run_id: str, source: str) -> set[int]",
+  "docstring": "List appids already fetched and persisted for one run and source.\n\nArgs:\n    conn: An open connection.\n    run_id: The run to check.\n    source: One of 'steamspy_all', 'steamspy_appdetails', 'steam_appdetails', 'steam_reviews'.\n\nReturns:\n    A set of appids present in raw_games for that (run_id, source) pair. Empty set if none.\n",
+  "preconditions": [
+    "source in {'steamspy_all', 'steamspy_appdetails', 'steam_appdetails', 'steam_reviews'}"
+  ],
+  "postconditions": [
+    "The returned set is exactly the distinct appid values of raw_games rows matching (run_id, source) -- no more, no fewer",
+    "Calling upsert_raw_payloads for a subset of the returned set is a correct no-op (INSERT OR IGNORE), so a caller does not need read_fetched_appids to be perfectly race-free against a concurrent writer on the same connection's thread"
+  ],
+  "edge_cases": [
+    {"input": "run_id has no raw_games rows for the given source at all (stage never attempted, or a different source)", "expected_behavior": "empty set, not an error"},
+    {"input": "source is not one of the four allowed values", "expected_behavior": "StorageError before querying, consistent with other CHECK-backed parameters across storage"},
+    {"input": "A very large run (tens of thousands of appids)", "expected_behavior": "returns a single set built from one query; acceptable because appid is a small int and the whole candidate set already fits in memory as pandas frames elsewhere in the pipeline"}
+  ],
+  "unit_tests": [
+    {"name": "test_returns_persisted_appids", "description": "After upsert_raw_payloads writes payloads for appids {1,2,3} under source='steam_appdetails', read_fetched_appids returns exactly that set.", "inputs": {"run_id": "r1", "source": "steam_appdetails"}, "expected": "{1, 2, 3}"},
+    {"name": "test_empty_for_unattempted_source", "description": "A run with only steamspy_all payloads returns an empty set for steam_reviews.", "inputs": {"run_id": "r1", "source": "steam_reviews"}, "expected": "set()"},
+    {"name": "test_invalid_source_raises", "description": "An out-of-vocabulary source string raises StorageError.", "inputs": {"run_id": "r1", "source": "bogus_source"}, "expected": "StorageError"}
+  ],
+  "dependencies": []
+}

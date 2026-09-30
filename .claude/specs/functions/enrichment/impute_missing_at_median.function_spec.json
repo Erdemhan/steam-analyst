@@ -1,0 +1,27 @@
+{
+  "module": "enrichment",
+  "function_name": "impute_missing_at_median",
+  "file_path": "src/steam_analyst/enrichment/features.py",
+  "description": "Median imputation helper used by compute_complexity_score: a feature absent from appdetails (or not yet normalizable, e.g. pre-freeze complexity_bounds) contributes its weight at the cohort median rather than at zero, and the row records which features were imputed (FORMULATION.md section 4, 'Missing values' note).",
+  "signature": "def impute_missing_at_median(values: pd.Series) -> tuple[pd.Series, pd.Series]",
+  "docstring": "Impute NaN entries at the column's own median and flag which rows were imputed.\n\nArgs:\n    values: A single already-normalized-to-[0,1] feature column (post normalize_feature_log_scaled / compute_tag_score / linear normalization) for the candidate cohort, with NaN for rows where the raw input was missing or the feature was not yet normalizable.\n\nReturns:\n    (imputed_values, was_imputed): imputed_values has every NaN replaced by nanmedian(values) computed over the non-NaN entries of THIS SAME candidate cohort (i.e. 'the cohort median' is always run-local, never a cross-run or hard-coded constant); was_imputed is a boolean Series, True exactly where an original NaN was replaced.\n\nRaises:\n    ValueError: If values is entirely NaN (no cohort median exists to impute from) -- compute_complexity_score must catch this per-feature case and treat that feature's weight as contributing 0.5 (the normalized-scale midpoint) as a documented last-resort fallback, since a feature missing for 100% of a run's candidates cannot be median-imputed from that run's own data.\n",
+  "preconditions": [
+    "values is a 1-D numeric Series already scaled to [0,1] (or at least a consistent unit) before this call -- imputation happens post-normalization, per FORMULATION.md's phrasing 'contributes its weight at the cohort median', which is a statement about the normalized feature, not the raw input"
+  ],
+  "postconditions": [
+    "imputed_values contains no NaN",
+    "was_imputed is True at exactly the positions where values was NaN",
+    "Non-NaN entries of values are returned completely unchanged in imputed_values"
+  ],
+  "edge_cases": [
+    {"input": "values with zero NaN entries", "expected_behavior": "imputed_values equals values exactly; was_imputed is all False"},
+    {"input": "values entirely NaN", "expected_behavior": "raises ValueError; caller (compute_complexity_score) applies the documented 0.5-fallback and must itself flag this as an unusually severe missing-data condition worth a run-level warning event"},
+    {"input": "values with an even number of non-NaN entries (median falls between two values)", "expected_behavior": "standard pandas/numpy median interpolation (average of the two middle values) is used, no special-casing"}
+  ],
+  "unit_tests": [
+    {"name": "test_no_missing_values_unchanged", "description": "A Series with no NaN returns itself unchanged and was_imputed all False.", "inputs": {}, "expected": "imputed_values == values; was_imputed.sum() == 0"},
+    {"name": "test_imputes_at_median_and_flags", "description": "A Series [0.2, NaN, 0.4, 0.6] imputes the NaN at median(0.2,0.4,0.6)=0.4 and flags position 1.", "inputs": {"values": [0.2, "NaN", 0.4, 0.6]}, "expected": "imputed_values == [0.2, 0.4, 0.4, 0.6]; was_imputed == [False, True, False, False]"},
+    {"name": "test_all_nan_raises", "description": "An entirely-NaN Series raises ValueError.", "inputs": {"values": ["NaN", "NaN"]}, "expected": "ValueError"}
+  ],
+  "dependencies": []
+}

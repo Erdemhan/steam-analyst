@@ -1,0 +1,29 @@
+{
+  "module": "orchestration",
+  "function_name": "reconcile_orphaned_runs",
+  "file_path": "src/steam_analyst/orchestration/runner.py",
+  "description": "Called once at UI startup (ui.main). Makes a process restart recoverable: a run that was 'running' when the process died is otherwise permanently stuck, since nothing else would ever transition it out of 'running'.",
+  "signature": "def reconcile_orphaned_runs(conn: sqlite3.Connection) -> list[str]",
+  "docstring": "Mark any run left 'running' by a dead process as failed, so it becomes resumable.\n\nArgs:\n    conn: An open connection, used only for the duration of this call.\n\nReturns:\n    The run_ids that were reconciled (marked failed). Empty list if none were orphaned.\n\nSequence:\n    1. candidates = [r for r in storage.list_runs(conn) with unbounded limit if r.status in ('pending', 'running')].\n    2. live = set(active_run_ids()).\n    3. For each candidate not in live: storage.update_run_status(conn, r.run_id, 'failed', error_message='process terminated before completion'); for each of that run's run_stages rows with status='running', storage.finish_run_stage(conn, r.run_id, stage, 'failed', error_message='process terminated before completion').\n    4. Return the list of reconciled run_ids.\n\nCalled exactly once per process start, before build_navigation, since the run list and detail pages must never show a run stuck in 'running' with no way to ever change.\n",
+  "preconditions": [
+    "Called before any new run is started in this process (so active_run_ids() has not yet accumulated entries for runs started in the current process that would otherwise be misclassified as orphaned)"
+  ],
+  "postconditions": [
+    "After this call, no run in the database has status 'running' or 'pending' unless it is also present in active_run_ids()",
+    "Every reconciled run's non-succeeded run_stages rows are also marked 'failed', never left dangling at 'running'"
+  ],
+  "edge_cases": [
+    {"input": "No orphaned runs exist (clean prior shutdown, or a fresh database)", "expected_behavior": "returns []; no writes occur"},
+    {"input": "A run is genuinely live in THIS process (started moments before reconcile_orphaned_runs runs, e.g. a race during startup)", "expected_behavior": "not reconciled -- it is present in active_run_ids() and therefore excluded from candidates"},
+    {"input": "A run stuck 'pending' (crashed during preflight, before any run_stages row existed)", "expected_behavior": "reconciled to 'failed' with the same error_message; there are no run_stages rows to also update in this case"},
+    {"input": "Called a second time in the same process after already reconciling once", "expected_behavior": "no-op the second time -- the previously orphaned runs are now 'failed', not 'pending'/'running', so they are no longer candidates"}
+  ],
+  "unit_tests": [
+    {"name": "test_orphaned_running_run_marked_failed", "description": "A fixture run with status='running' and no entry in active_run_ids() is marked 'failed' with the fixed error_message.", "inputs": {}, "expected": "runs.status == 'failed', error_message == 'process terminated before completion'"},
+    {"name": "test_orphaned_run_stages_also_marked_failed", "description": "A reconciled run's run_stages row that was 'running' is also marked 'failed'.", "inputs": {}, "expected": "run_stages.status == 'failed' for the previously-running stage"},
+    {"name": "test_live_run_not_reconciled", "description": "A run present in active_run_ids() is left untouched even though its status is 'running'.", "inputs": {}, "expected": "runs.status unchanged, run_id not in the returned list"},
+    {"name": "test_pending_orphan_reconciled_with_no_stage_rows", "description": "A run stuck 'pending' with zero run_stages rows is reconciled without error.", "inputs": {}, "expected": "runs.status == 'failed', no exception from the empty stage update loop"},
+    {"name": "test_no_orphans_returns_empty_list", "description": "A database with only 'succeeded'/'failed'/'cancelled' runs returns [].", "inputs": {}, "expected": "[]"}
+  ],
+  "dependencies": ["active_run_ids", "storage.list_runs", "storage.update_run_status", "storage.finish_run_stage"]
+}

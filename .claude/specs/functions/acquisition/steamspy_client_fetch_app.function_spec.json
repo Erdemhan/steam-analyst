@@ -1,0 +1,21 @@
+{
+  "module": "acquisition",
+  "function_name": "SteamSpyClient.fetch_app",
+  "file_path": "src/steam_analyst/acquisition/steamspy_client.py",
+  "description": "Wraps SteamSpy's single-app endpoint (request=appdetails&appid=N). Reserved for v1 per the acquisition module's open question ('rely on the tag data already in the bulk payload' was the confirmed resolution) -- this method exists in the public interface for forward compatibility but run_acquisition does not call it in v1, since tag data for the coarse-filtered candidate set is already present in the steamspy_all bulk payload captured by fetch_steamspy_catalog.",
+  "signature": "def fetch_app(self, appid: int) -> tuple[int, dict]",
+  "docstring": "Fetch SteamSpy's per-app detail endpoint for one appid.\n\nArgs:\n    appid: The Steam application id.\n\nReturns:\n    (status_code, payload) from HttpClient.get_json.\n\nNote:\n    Confirmed resolution of the module spec's open question 'store steamspy_appdetails per candidate, or rely on bulk tags': rely on the bulk payload. This method is retained on the client for API completeness and potential future use (e.g. refreshing a single app's SteamSpy data without a full bulk re-crawl) but is NOT invoked by run_acquisition or extract_tags in v1.\n",
+  "preconditions": [
+    "appid > 0"
+  ],
+  "postconditions": [
+    "Returns the tuple as-is from HttpClient.get_json"
+  ],
+  "edge_cases": [
+    {"input": "appid for a delisted or nonexistent app", "expected_behavior": "SteamSpy typically returns 200 with a near-empty/default-valued dict rather than 404; returned unchanged, no special-casing here"}
+  ],
+  "unit_tests": [
+    {"name": "test_fetch_app_returns_stubbed_payload", "description": "A stubbed transport response is returned unchanged.", "inputs": {"appid": 123456}, "expected": "(200, <stubbed dict>)"}
+  ],
+  "dependencies": ["HttpClient.get_json"]
+}

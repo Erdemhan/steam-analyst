@@ -1,0 +1,28 @@
+{
+  "module": "reporting",
+  "function_name": "build_opportunity_matrix_view",
+  "file_path": "src/steam_analyst/reporting/views.py",
+  "description": "Display-ready transform of analysis.build_opportunity_matrix's stored output: rounded values, human-readable column names, sample size always present.",
+  "signature": "def build_opportunity_matrix_view(matrix: pd.DataFrame, *, min_n: int | None = None, sort_by: str = 'opportunity_score') -> pd.DataFrame",
+  "docstring": "Build the display-ready opportunity matrix.\n\nArgs:\n    matrix: analysis_results['opportunity_matrix'] deserialized back into a DataFrame.\n    min_n: Optional additional display-side filter on n_games, for a user who wants to further restrict beyond the analysis stage's own min_cluster_size (e.g. only show archetypes with n_games >= 10). None applies no additional filter.\n    sort_by: Column to sort by, descending; must be one of matrix's own columns.\n\nReturns:\n    A DataFrame with human-readable column headers (e.g. 'opportunity_score' -> 'Opportunity Score'), numeric columns rounded to a fixed, sensible precision (z-scores to 2 decimals, dollar figures to 0 decimals, complexity/simplicity to 2 decimals), and n_games always present and never rounded away.\n",
+  "preconditions": [
+    "sort_by is a valid column name in matrix",
+    "min_n is None or >= 0"
+  ],
+  "postconditions": [
+    "Every row in the result has n_games >= min_n when min_n is given",
+    "Result is sorted by sort_by descending"
+  ],
+  "edge_cases": [
+    {"input": "matrix is empty (no archetypes scored)", "expected_behavior": "returns an empty DataFrame with the human-readable column headers already applied, not a bare empty frame"},
+    {"input": "min_n higher than every archetype's n_games", "expected_behavior": "returns an empty (but correctly headered) DataFrame"},
+    {"input": "sort_by not a valid column", "expected_behavior": "raises ValueError naming the invalid column (reporting's own defensive check, distinct from a storage-layer error since this is a pure display function with no database access)"}
+  ],
+  "unit_tests": [
+    {"name": "test_sorted_descending_by_default", "description": "A fixture matrix is returned sorted by opportunity_score descending.", "inputs": {}, "expected": "monotonically non-increasing opportunity_score column"},
+    {"name": "test_min_n_filters_rows", "description": "min_n=10 excludes archetypes with fewer games.", "inputs": {"min_n": 10}, "expected": "all remaining rows have n_games >= 10"},
+    {"name": "test_empty_matrix_returns_empty_with_headers", "description": "An empty input matrix returns an empty output with the expected column headers.", "inputs": {"matrix": "empty"}, "expected": "0 rows, expected headers present"},
+    {"name": "test_invalid_sort_by_raises", "description": "sort_by='not_a_column' raises ValueError.", "inputs": {"sort_by": "not_a_column"}, "expected": "ValueError"}
+  ],
+  "dependencies": []
+}

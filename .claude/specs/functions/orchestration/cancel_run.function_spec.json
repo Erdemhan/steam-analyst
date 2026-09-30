@@ -1,0 +1,29 @@
+{
+  "module": "orchestration",
+  "function_name": "cancel_run",
+  "file_path": "src/steam_analyst/orchestration/runner.py",
+  "description": "Requests cooperative cancellation of a live run. Does not block, does not itself change runs.status, and does not kill any thread -- it only sets the Event that the seven check-points (CP1-CP7) poll (ADR-015).",
+  "signature": "def cancel_run(run_id: str) -> bool",
+  "docstring": "Signal a live run to stop at its next cancellation check-point.\n\nArgs:\n    run_id: The run to cancel.\n\nReturns:\n    True if a live worker was registered for run_id and the cancellation event was set (idempotent -- a second call also returns True, since setting an already-set Event is a no-op that still counts as 'the request is recorded'). False if no live worker is registered for run_id -- unknown run_id, already-finished run, or a run that was never started this process (e.g. after a restart, before reconcile_orphaned_runs ran) -- all read the same as 'nothing to cancel' from this function's point of view.\n\nImplementation note: _CANCEL_REGISTRY stores (threading.Event, Path) pairs, not bare Events, specifically so cancel_run has a db_path to open a short-lived connection with and append a RUN_LEVEL_STAGE run_event recording the cancellation request -- without the stored db_path, cancel_run would have no way to write that event, since its own signature intentionally takes no db_path or connection argument (the UI calls it with just a run_id, mirroring is_running and active_run_ids).\n",
+  "preconditions": [],
+  "postconditions": [
+    "When True is returned, the registered Event for run_id is in the set state",
+    "When True is returned, a RUN_LEVEL_STAGE run_event recording the cancellation request has been appended and committed",
+    "runs.status is never modified by this call directly -- only the worker's own unwind (via run_pipeline's exception handling) writes 'cancelled'"
+  ],
+  "edge_cases": [
+    {"input": "run_id has no live worker (already finished, never started, or unknown)", "expected_behavior": "returns False, no exception, no event appended, no status change"},
+    {"input": "Called twice in a row for the same live run_id", "expected_behavior": "both calls return True; the Event was already set by the first call so the second is a no-op on the Event itself, but per the module's own edge case wording only the first call's request is what matters operationally -- a second event MAY be appended or the implementation may suppress a duplicate append; either is acceptable as long as the Event ends up set and no exception is raised"},
+    {"input": "The short-lived connection cancel_run opens to append the event itself fails (e.g. the database file was deleted mid-run)", "expected_behavior": "the cancellation Event is still set even if the event-append fails -- cancellation must not depend on a successful write; the append failure is logged, not propagated, since a failed audit-trail write must not prevent the actual cancellation from taking effect"},
+    {"input": "cancel_run races with the worker's own finally block removing run_id from _CANCEL_REGISTRY (the run finishes at almost the same moment cancel is requested)", "expected_behavior": "both outcomes are acceptable: either cancel_run sees the entry and sets it (a no-op if the worker is already past its last check-point) or cancel_run sees no entry and returns False; the registry access is lock-guarded so no partial/torn read occurs, just an ordinary race with two legitimate outcomes"}
+  ],
+  "unit_tests": [
+    {"name": "test_cancel_live_run_returns_true", "description": "Cancelling a run with a registered worker returns True and sets the Event.", "inputs": {}, "expected": "True; Event.is_set() == True"},
+    {"name": "test_cancel_unknown_run_returns_false", "description": "Cancelling a run_id never started returns False without raising.", "inputs": {"run_id": "never-started"}, "expected": "False"},
+    {"name": "test_cancel_finished_run_returns_false", "description": "Cancelling a run that already reached a terminal status (and was removed from the registry) returns False.", "inputs": {}, "expected": "False"},
+    {"name": "test_cancel_idempotent_second_call", "description": "Calling cancel_run twice on the same live run does not raise and both calls return True.", "inputs": {}, "expected": "True, True"},
+    {"name": "test_cancel_appends_run_level_event", "description": "A successful cancel_run call results in a new run_event with stage=RUN_LEVEL_STAGE recording the request.", "inputs": {}, "expected": "a new run_events row with stage='pipeline'"},
+    {"name": "test_cancel_event_set_even_if_append_fails", "description": "If the event-append connection fails (simulated), the cancellation Event is still set.", "inputs": {}, "expected": "Event.is_set() == True despite the simulated append failure"}
+  ],
+  "dependencies": ["is_running", "RUN_LEVEL_STAGE", "storage.connect", "storage.append_run_event"]
+}

@@ -1,0 +1,29 @@
+{
+  "module": "acquisition",
+  "function_name": "build_catalog_frame",
+  "file_path": "src/steam_analyst/acquisition/funnel.py",
+  "description": "Flattens raw SteamSpy bulk payloads into a tabular DataFrame for coarse_filter.",
+  "signature": "def build_catalog_frame(payloads: Iterable[RawPayload]) -> pd.DataFrame",
+  "docstring": "Flatten bulk payloads into a catalog DataFrame.\n\nArgs:\n    payloads: RawPayload objects with source='steamspy_all', typically from fetch_steamspy_catalog after persistence, or read back via storage.read_raw_payloads for a re-run of the coarse filter alone.\n\nReturns:\n    A DataFrame with columns: appid, name, developer, publisher, positive, negative, owners_low, owners_high, price_usd, initialprice, discount, tags (the raw per-app tag:votes dict, kept for extract_tags in enrichment -- NOT flattened into separate rows here). One row per unique appid; if the same appid appears in more than one input payload (duplicate across pages), the later one in iteration order wins and the occurrence is counted.\n\nReturns also (as a DataFrame attribute or a parallel return, per implementation) a duplicate_appid count for the coarse_filter_contract's rejection_reasons tally -- exact mechanism (DataFrame.attrs vs. a second return value) is an implementation detail left to worker-coder, but the count must be observable by coarse_filter's caller (run_acquisition) for the funnel report.\n",
+  "preconditions": [
+    "Each RawPayload.source == 'steamspy_all'",
+    "Each RawPayload.payload matches SteamSpy's per-app object shape (missing/absent fields are tolerated and become NaN/None, not a hard failure, since SteamSpy's schema is not strictly documented)"
+  ],
+  "postconditions": [
+    "appid column has no duplicate values in the output",
+    "price_usd and initialprice are floats in dollars (SteamSpy reports price in cents; this function divides by 100), never left as raw cents"
+  ],
+  "edge_cases": [
+    {"input": "An empty iterable", "expected_behavior": "returns an empty DataFrame with the full expected column set"},
+    {"input": "The same appid present in two input payloads with different content", "expected_behavior": "the later one (in iteration order) wins; duplicate_appid tally increments by 1 for each extra occurrence beyond the first"},
+    {"input": "A payload missing the 'tags' field entirely", "expected_behavior": "tags column is an empty dict {} for that row, not NaN or None, so downstream extract_tags can iterate it uniformly"},
+    {"input": "price field is the string '0' for a free-to-play title", "expected_behavior": "price_usd == 0.0, a valid float, not NaN"}
+  ],
+  "unit_tests": [
+    {"name": "test_flattens_fixture_page_into_expected_columns", "description": "tests/fixtures/steamspy_all_page0.json parsed into RawPayload objects produces the documented column set with correct dtypes.", "inputs": {}, "expected": "DataFrame with exactly the documented columns"},
+    {"name": "test_price_cents_converted_to_dollars", "description": "A raw price of '1999' (cents) becomes price_usd=19.99.", "inputs": {}, "expected": 19.99},
+    {"name": "test_duplicate_appid_last_wins_and_counted", "description": "Two payloads for the same appid produce one row (the later content) and a duplicate_appid count of 1.", "inputs": {}, "expected": "1 row matching the later payload; duplicate count == 1"},
+    {"name": "test_empty_input_yields_empty_frame_with_columns", "description": "No payloads at all still returns a DataFrame with the right columns and 0 rows.", "inputs": {"payloads": []}, "expected": "0 rows, full column set present"}
+  ],
+  "dependencies": []
+}

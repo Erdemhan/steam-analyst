@@ -1,0 +1,27 @@
+{
+  "module": "reporting",
+  "function_name": "is_partial_run",
+  "file_path": "src/steam_analyst/reporting/report.py",
+  "description": "The single, canonical definition of 'partial' for a run, independent of runs.status by construction (ADR-016 / 05_reporting.module_spec.json invariant: 'is_partial has exactly one definition'). Every other place that needs to know whether a run is partial calls this rather than re-deriving it.",
+  "signature": "def is_partial_run(stages: Sequence[RunStage]) -> bool",
+  "docstring": "Determine whether a run's stage set counts as partial.\n\nArgs:\n    stages: storage.read_run_stages(conn, run_id) output, in any order.\n\nReturns:\n    True unless stages contains a 'succeeded' entry for all three of 'acquisition', 'enrichment' and 'analysis'. Equivalently: False iff {s.stage for s in stages if s.status == 'succeeded'} == {'acquisition', 'enrichment', 'analysis'}.\n",
+  "preconditions": [],
+  "postconditions": [
+    "Result depends only on stages, never on any runs.status value",
+    "A stage present with a non-'succeeded' status counts the same as a stage entirely absent -- both make the result True"
+  ],
+  "edge_cases": [
+    {"input": "stages=[] (no stage ever attempted)", "expected_behavior": "True"},
+    {"input": "All three stages present with status='succeeded'", "expected_behavior": "False"},
+    {"input": "All three present but one has status='failed'", "expected_behavior": "True"},
+    {"input": "An extra, unrecognized stage name present alongside all three succeeded (e.g. a future stage added later without updating this function)", "expected_behavior": "still False -- the check is that the required three are all succeeded, not that the set is exactly equal to stages; an extra unknown stage does not itself make a run partial"},
+    {"input": "Duplicate RunStage entries for the same stage name (should not occur given the (run_id, stage) primary key, but not structurally prevented for a hand-built list in a test)", "expected_behavior": "set-based comparison naturally deduplicates; result unaffected"}
+  ],
+  "unit_tests": [
+    {"name": "test_all_succeeded_is_not_partial", "description": "Three RunStage entries, all status='succeeded', returns False.", "inputs": {"stages": [{"stage": "acquisition", "status": "succeeded"}, {"stage": "enrichment", "status": "succeeded"}, {"stage": "analysis", "status": "succeeded"}]}, "expected": false},
+    {"name": "test_empty_stages_is_partial", "description": "An empty stages list returns True.", "inputs": {"stages": []}, "expected": true},
+    {"name": "test_one_failed_stage_is_partial", "description": "Two succeeded, one failed, returns True.", "inputs": {"stages": [{"stage": "acquisition", "status": "succeeded"}, {"stage": "enrichment", "status": "failed"}, {"stage": "analysis", "status": "pending"}]}, "expected": true},
+    {"name": "test_extra_unknown_stage_does_not_affect_result", "description": "All three required stages succeeded plus one unrecognized extra stage entry still returns False.", "inputs": {"stages": [{"stage": "acquisition", "status": "succeeded"}, {"stage": "enrichment", "status": "succeeded"}, {"stage": "analysis", "status": "succeeded"}, {"stage": "future_stage", "status": "succeeded"}]}, "expected": false}
+  ],
+  "dependencies": ["storage.RunStage"]
+}

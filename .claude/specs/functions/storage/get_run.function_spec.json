@@ -1,0 +1,22 @@
+{
+  "module": "storage",
+  "function_name": "get_run",
+  "file_path": "src/steam_analyst/storage/runs.py",
+  "description": "Fetches one run row by id.",
+  "signature": "def get_run(conn: sqlite3.Connection, run_id: str) -> RunRecord | None",
+  "docstring": "Fetch a single run.\n\nArgs:\n    conn: An open connection.\n    run_id: The run to fetch.\n\nReturns:\n    A RunRecord with config_json deserialized into config: dict, or None if run_id does not exist.\n",
+  "preconditions": [],
+  "postconditions": [
+    "Returned RunRecord.config is a dict, never a raw JSON string",
+    "Returns None rather than raising for an unknown run_id (read-only lookup semantics, distinct from update_run_status's error-on-unknown-id contract)"
+  ],
+  "edge_cases": [
+    {"input": "run_id does not exist", "expected_behavior": "returns None"},
+    {"input": "config_json in the row is corrupted/unparseable JSON (should not happen under normal operation)", "expected_behavior": "StorageError, since this indicates database corruption rather than a normal 'not found' case"}
+  ],
+  "unit_tests": [
+    {"name": "test_get_existing_run", "description": "A run created via create_run is retrievable with matching fields.", "inputs": {}, "expected": "RunRecord matching the created run"},
+    {"name": "test_get_unknown_run_returns_none", "description": "An unknown run_id returns None, not an exception.", "inputs": {"run_id": "does-not-exist"}, "expected": "None"}
+  ],
+  "dependencies": []
+}

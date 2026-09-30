@@ -1,0 +1,27 @@
+{
+  "module": "analysis",
+  "function_name": "compute_zscore",
+  "file_path": "src/steam_analyst/analysis/scoring.py",
+  "description": "Shared z-score helper used by compute_demand, compute_competition_density and build_opportunity_matrix, with the module's own zero-variance guard baked in (z=0 rather than NaN/division-by-zero).",
+  "signature": "def compute_zscore(series: pd.Series) -> pd.Series",
+  "docstring": "Compute a z-score over the scored cluster population.\n\nArgs:\n    series: A numeric Series, one value per scored (i.e. >= min_cluster_size) archetype for the current run.\n\nReturns:\n    (series - series.mean()) / series.std(ddof=0), except when series.std(ddof=0) == 0 (all values identical, including the single-cluster case), in which case every value is 0.0 rather than NaN, per the module's own invariant 'Zero-variance feature when computing z-scores -> z defined as 0 for all clusters rather than a division by zero'.\n",
+  "preconditions": [
+    "series has at least one entry"
+  ],
+  "postconditions": [
+    "Result has the same index and length as series",
+    "If series has nonzero variance, mean(result) == 0.0 within floating-point tolerance",
+    "Never produces NaN or +/-inf"
+  ],
+  "edge_cases": [
+    {"input": "series with all identical values (zero variance)", "expected_behavior": "returns all zeros"},
+    {"input": "series with exactly one entry", "expected_behavior": "zero variance by definition (std of a single value is 0); returns [0.0]"},
+    {"input": "series containing a NaN entry", "expected_behavior": "propagates NaN only at that entry's position; mean/std are computed excluding NaN (pandas default skipna=True) so a single missing archetype value does not poison every other archetype's z-score"}
+  ],
+  "unit_tests": [
+    {"name": "test_standard_zscore_computation", "description": "A series with known mean/std produces the standard z-score formula's result.", "inputs": {"series": [1, 2, 3, 4, 5]}, "expected": "z-scores summing to ~0, matching manual computation"},
+    {"name": "test_zero_variance_returns_all_zero", "description": "A series of identical values returns all 0.0, not NaN.", "inputs": {"series": [5, 5, 5]}, "expected": "[0.0, 0.0, 0.0]"},
+    {"name": "test_single_value_returns_zero", "description": "A one-element series returns [0.0].", "inputs": {"series": [7]}, "expected": "[0.0]"}
+  ],
+  "dependencies": []
+}

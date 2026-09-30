@@ -1,0 +1,29 @@
+{
+  "module": "storage",
+  "function_name": "upsert_raw_payloads",
+  "file_path": "src/steam_analyst/storage/raw.py",
+  "description": "Batched, single-transaction insert of raw HTTP payloads into raw_games. Called 'upsert' because a re-run of the same acquisition step for the same (run_id, appid, source) key (e.g. a retried failed fetch within the same run) replaces the prior row rather than violating the primary key -- but per ADR-005, this only ever happens within one run's own acquisition pass, never across runs (raw_games rows are immutable once the run's acquisition stage has completed).",
+  "signature": "def upsert_raw_payloads(conn: sqlite3.Connection, run_id: str, payloads: Iterable[RawPayload]) -> int",
+  "docstring": "Write a batch of raw payloads.\n\nArgs:\n    conn: An open connection.\n    run_id: The run these payloads belong to.\n    payloads: An iterable of RawPayload. Consumed lazily and written in batches (e.g. 500 rows per executemany call) inside one surrounding transaction, so a crash mid-stream leaves the already-committed batches intact per the acquisition invariant 'payloads are persisted in batches as they stream in'.\n\nReturns:\n    The number of rows written (post-deduplication if the same (appid, source) appeared twice in payloads, the later one wins).\n\nRaises:\n    StorageError: If run_id does not exist, or any payload's payload_sha256 does not match sha256 of its own payload_json serialization (defensive integrity check).\n",
+  "preconditions": [
+    "run_id already exists in runs",
+    "each RawPayload.source is one of the four allowed source values"
+  ],
+  "postconditions": [
+    "After the call, read_raw_payloads(conn, run_id, source) yields every payload written for that source, keyed by (run_id, appid, source)",
+    "The whole batch commits atomically per internal sub-batch; the function does not leave a half-written sub-batch uncommitted on success"
+  ],
+  "edge_cases": [
+    {"input": "An empty iterable", "expected_behavior": "writes zero rows, returns 0, does not raise"},
+    {"input": "Two RawPayload entries with the same (appid, source) in the same call", "expected_behavior": "the later one in iteration order wins (INSERT OR REPLACE semantics); both are not written as separate rows since (run_id, appid, source) is the primary key"},
+    {"input": "payloads is a generator that raises partway through iteration (e.g. a network error mid-stream from fetch_steamspy_catalog)", "expected_behavior": "rows from already-completed internal sub-batches remain committed; the exception propagates to the caller after that point, and the return value is never produced (function does not return; it raises)"},
+    {"input": "source not in the four allowed values", "expected_behavior": "StorageError (CHECK constraint violation wrapped) before or during the batch commit"}
+  ],
+  "unit_tests": [
+    {"name": "test_stores_payloads_byte_equal", "description": "A payload round-trips through upsert_raw_payloads then read_raw_payloads with byte-identical JSON and matching sha256.", "inputs": {}, "expected": "read-back payload_json equals the original bytes; payload_sha256 matches"},
+    {"name": "test_empty_iterable_writes_zero", "description": "An empty list returns 0 and writes nothing.", "inputs": {"payloads": []}, "expected": 0},
+    {"name": "test_duplicate_key_in_batch_last_wins", "description": "Two payloads for the same appid/source in one call leave only the second's content stored.", "inputs": {}, "expected": "one row, matching the second payload's content"},
+    {"name": "test_partial_batch_survives_stream_error", "description": "A generator that yields 600 valid payloads then raises leaves the first committed sub-batch (500) persisted.", "inputs": {}, "expected": "500 rows present after the exception propagates"}
+  ],
+  "dependencies": []
+}

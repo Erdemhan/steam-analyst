@@ -1,0 +1,28 @@
+{
+  "module": "acquisition",
+  "function_name": "fetch_steamspy_catalog",
+  "file_path": "src/steam_analyst/acquisition/funnel.py",
+  "description": "Paginates through SteamSpy's bulk 'all' endpoint, yielding one RawPayload per app, streaming so the caller never holds the ~150k-app catalog in memory at once.",
+  "signature": "def fetch_steamspy_catalog(client: SteamSpyClient, *, max_pages: int | None = None, on_event: EventSink) -> Iterator[RawPayload]",
+  "docstring": "Stream the whole SteamSpy bulk catalog page by page.\n\nArgs:\n    client: A SteamSpyClient.\n    max_pages: Optional cap on pages fetched, primarily for tests; None means fetch until pagination naturally stops.\n    on_event: Progress/log sink; emits one 'fetch_page' event per page with progress=None (total page count is unknown up front) and a 'warning' event if pagination stops due to an empty or repeated page.\n\nYields:\n    One RawPayload(source='steamspy_all', ...) per app encountered, in page order. Calls client.acquire()-guarded fetch_all_page once per page, honoring AcquisitionConfig.steamspy_page_delay_seconds between pages via the RateLimiter the client wraps.\n\nStops when:\n    A page returns an empty dict, or a page's app-id set is identical to the immediately preceding page's (SteamSpy sometimes repeats the last page instead of returning empty at the boundary) -- both cases emit a 'warning' event and stop, per the module's edge case list.\n",
+  "preconditions": [
+    "client is fully constructed with a working RateLimiter"
+  ],
+  "postconditions": [
+    "The total number of yielded RawPayload objects equals the sum of unique appids across all fetched pages before the stop condition, with no duplicate appid within this function's own output (cross-page duplicates are resolved later in build_catalog_frame, per that function's own edge case, but within a single page a duplicate appid key cannot occur since SteamSpy's page payload is itself a dict keyed by appid)",
+    "on_event is called at least once per page fetched"
+  ],
+  "edge_cases": [
+    {"input": "A page returns {}", "expected_behavior": "stop pagination immediately, emit a 'warning' event, yield nothing further"},
+    {"input": "A page returns the exact same set of appids as the previous page", "expected_behavior": "stop pagination, emit a 'warning' event ('repeated page detected')"},
+    {"input": "max_pages=2 with a catalog that has more real pages", "expected_behavior": "stops after exactly 2 pages regardless of whether page 2's content looked like a natural end"},
+    {"input": "A page fetch returns a non-2xx status (e.g. transient 500 exhausting HttpClient's own retries)", "expected_behavior": "propagates as an AcquisitionError from this generator (a bulk-catalog failure is stage-fatal, unlike a per-app detail failure, since without the catalog there is no candidate set at all)"}
+  ],
+  "unit_tests": [
+    {"name": "test_streams_two_pages_then_stops_on_empty", "description": "A stubbed client returning fixture page0 (2 apps), page1 (1 app), page2 ({}) yields exactly 3 RawPayload objects and stops.", "inputs": {}, "expected": "3 RawPayload objects, one 'warning' event"},
+    {"name": "test_stops_on_repeated_page", "description": "page0 and page1 have identical appid sets; yields page0's apps only, then stops with a warning.", "inputs": {}, "expected": "yields page0's apps once, one 'warning' event"},
+    {"name": "test_max_pages_cap_respected", "description": "max_pages=1 stops after the first page even if it looked non-terminal.", "inputs": {"max_pages": 1}, "expected": "exactly one page's worth of RawPayload objects"},
+    {"name": "test_bulk_fetch_failure_raises", "description": "A page fetch returning a persistent 500 raises AcquisitionError.", "inputs": {}, "expected": "AcquisitionError"}
+  ],
+  "dependencies": ["SteamSpyClient.fetch_all_page", "RateLimiter.acquire", "AcquisitionError"]
+}

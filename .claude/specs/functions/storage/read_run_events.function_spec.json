@@ -1,0 +1,27 @@
+{
+  "module": "storage",
+  "function_name": "read_run_events",
+  "file_path": "src/steam_analyst/storage/events.py",
+  "description": "Reads a run's event stream, optionally only events newer than a given event_id, for UI polling.",
+  "signature": "def read_run_events(conn: sqlite3.Connection, run_id: str, *, since_event_id: int = 0) -> list[RunEvent]",
+  "docstring": "Read events for a run.\n\nArgs:\n    conn: An open connection.\n    run_id: The run to read events for.\n    since_event_id: Only events with event_id strictly greater than this are returned; 0 returns the full history.\n\nReturns:\n    A list of RunEvent ordered by event_id ascending (oldest first, matching how a log/progress feed is naturally consumed).\n",
+  "preconditions": [
+    "since_event_id >= 0"
+  ],
+  "postconditions": [
+    "Returned events are strictly ordered by event_id ascending",
+    "Every returned event has event_id > since_event_id",
+    "Returns an empty list, not an error, for a run_id with no events yet or an unknown run_id"
+  ],
+  "edge_cases": [
+    {"input": "since_event_id greater than the highest existing event_id", "expected_behavior": "returns an empty list"},
+    {"input": "run_id unknown or has zero events", "expected_behavior": "returns an empty list, not an exception"},
+    {"input": "Called repeatedly with since_event_id set to the last-seen event_id (typical UI polling pattern)", "expected_behavior": "each call returns only strictly new events, with no duplicates and no gaps, even under concurrent appends"}
+  ],
+  "unit_tests": [
+    {"name": "test_read_full_history", "description": "since_event_id=0 returns all events for the run in insertion order.", "inputs": {"since_event_id": 0}, "expected": "list of all RunEvent for the run, ascending by event_id"},
+    {"name": "test_read_since_last_seen", "description": "Polling with since_event_id equal to the last event's id returns only events appended afterward.", "inputs": {}, "expected": "list containing only the newly appended events"},
+    {"name": "test_unknown_run_returns_empty_list", "description": "An unknown run_id returns [].", "inputs": {"run_id": "does-not-exist"}, "expected": "[]"}
+  ],
+  "dependencies": []
+}

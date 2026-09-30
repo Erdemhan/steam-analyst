@@ -1,0 +1,27 @@
+{
+  "module": "storage",
+  "function_name": "update_run_status",
+  "file_path": "src/steam_analyst/storage/runs.py",
+  "description": "Updates a run's status, and optionally its finished_at timestamp and error_message.",
+  "signature": "def update_run_status(conn: sqlite3.Connection, run_id: str, status: str, *, finished_at: str | None = None, error_message: str | None = None) -> None",
+  "docstring": "Transition a run to a new status.\n\nArgs:\n    conn: An open connection.\n    run_id: The run to update.\n    status: One of 'pending', 'running', 'succeeded', 'failed', 'cancelled'.\n    finished_at: ISO-8601 UTC timestamp string; typically provided when status is a terminal state ('succeeded', 'failed', 'cancelled').\n    error_message: Populated when status='failed'.\n\nReturns:\n    None.\n\nRaises:\n    StorageError: If run_id does not exist, or status is not one of the five allowed values.\n",
+  "preconditions": [
+    "status in {'pending','running','succeeded','failed','cancelled'}",
+    "run_id already exists in runs"
+  ],
+  "postconditions": [
+    "get_run(conn, run_id).status == status after a successful call",
+    "If finished_at is provided, get_run(conn, run_id).finished_at reflects it exactly"
+  ],
+  "edge_cases": [
+    {"input": "run_id does not exist", "expected_behavior": "StorageError, not a silent no-op (distinct from delete_run's no-op-on-unknown-id contract, since a status update on a nonexistent run indicates a caller bug)"},
+    {"input": "status='invalid_status'", "expected_behavior": "StorageError before any UPDATE is issued"},
+    {"input": "Updating a run that is already in a terminal state to another terminal state (e.g. succeeded -> failed)", "expected_behavior": "allowed at the storage layer; storage enforces no state-machine transition rules, only the CHECK-constrained value set -- orchestration is responsible for not doing this"}
+  ],
+  "unit_tests": [
+    {"name": "test_update_to_running_then_succeeded", "description": "Two sequential updates land correctly and finished_at is set on the second.", "inputs": {"status": "succeeded", "finished_at": "2026-09-20T12:00:00Z"}, "expected": "get_run reflects status='succeeded' and the given finished_at"},
+    {"name": "test_unknown_run_id_raises", "description": "Updating a nonexistent run_id raises StorageError.", "inputs": {"run_id": "does-not-exist", "status": "running"}, "expected": "StorageError"},
+    {"name": "test_invalid_status_raises", "description": "status='paused' raises StorageError.", "inputs": {"status": "paused"}, "expected": "StorageError"}
+  ],
+  "dependencies": ["get_run"]
+}

@@ -1,0 +1,31 @@
+{
+  "module": "storage",
+  "function_name": "finish_run_stage",
+  "file_path": "src/steam_analyst/storage/run_stages.py",
+  "description": "Writes the terminal status for one stage. Per ADR-016's write-ordering invariant, the caller must have already committed that stage's own data (e.g. write_enriched for the enrichment stage) before calling this, since a reader polling run_stages must never observe a 'succeeded' stage whose data isn't there yet.",
+  "signature": "def finish_run_stage(conn: sqlite3.Connection, run_id: str, stage: str, status: str, *, error_message: str | None = None) -> None",
+  "docstring": "Transition a running stage to a terminal status.\n\nArgs:\n    conn: An open connection.\n    run_id: The run this stage belongs to.\n    stage: One of 'acquisition', 'enrichment', 'analysis'.\n    status: One of 'succeeded', 'failed', 'cancelled'. Not 'pending' or 'running' -- those are begin_run_stage's job.\n    error_message: Populated when status is 'failed' or 'cancelled' with a cause; ignored (but not rejected) for 'succeeded'.\n\nReturns:\n    None.\n\nRaises:\n    StorageError: If run_id/stage has no row at all (finish before begin), or status is not one of the three terminal values.\n",
+  "preconditions": [
+    "A run_stages row for (run_id, stage) already exists (created by a prior begin_run_stage call)",
+    "status in {'succeeded', 'failed', 'cancelled'}",
+    "The stage's own data writes (write_enriched / write_analysis_result / acquisition's raw_games writes) are already committed"
+  ],
+  "postconditions": [
+    "read_run_stages(conn, run_id) shows the row with the given status and finished_at set",
+    "error_message is stored verbatim when provided",
+    "The write is committed before finish_run_stage returns"
+  ],
+  "edge_cases": [
+    {"input": "stage was never begun (no row exists)", "expected_behavior": "StorageError -- recording a terminal status with no start time would be a caller bug, not a valid state; this differs from delete_run's no-op-on-unknown-id contract because a mismatched begin/finish call pair signals an orchestration bug worth surfacing loudly"},
+    {"input": "status='succeeded' with error_message provided anyway", "expected_behavior": "accepted and stored; storage does not enforce that error_message is only set for failure states, since a caller might attach a non-fatal warning summary even on success"},
+    {"input": "status='running' or 'pending'", "expected_behavior": "StorageError -- finish_run_stage only accepts the three terminal values, use begin_run_stage to (re)enter 'running'"},
+    {"input": "finish_run_stage called twice for the same (run_id, stage) without an intervening begin_run_stage", "expected_behavior": "the second call succeeds and overwrites the terminal status and finished_at -- storage enforces no state-machine transition rules, matching update_run_status's own documented latitude"}
+  ],
+  "unit_tests": [
+    {"name": "test_finish_succeeded_sets_terminal_state", "description": "A begun stage finished with 'succeeded' shows finished_at set and error_message None.", "inputs": {"run_id": "r1", "stage": "acquisition", "status": "succeeded"}, "expected": "read_run_stages shows status='succeeded', finished_at not None"},
+    {"name": "test_finish_failed_stores_error_message", "description": "status='failed' with an error_message stores it verbatim.", "inputs": {"run_id": "r1", "stage": "enrichment", "status": "failed", "error_message": "enrichment: ValueError: bad row"}, "expected": "read_run_stages shows status='failed' with that exact error_message"},
+    {"name": "test_finish_never_begun_raises", "description": "Calling finish_run_stage for a (run_id, stage) with no existing row raises StorageError.", "inputs": {"run_id": "r1", "stage": "analysis", "status": "succeeded"}, "expected": "StorageError"},
+    {"name": "test_invalid_status_raises", "description": "status='running' is rejected as not a terminal value.", "inputs": {"run_id": "r1", "stage": "acquisition", "status": "running"}, "expected": "StorageError"}
+  ],
+  "dependencies": ["read_run_stages"]
+}

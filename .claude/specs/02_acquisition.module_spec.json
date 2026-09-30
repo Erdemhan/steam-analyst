@@ -1,0 +1,87 @@
+{
+  "module_id": "acquisition",
+  "spec_version": "0.1.0",
+  "status": "planned",
+  "package_path": "src/steam_analyst/acquisition",
+  "responsibility": "Stage one of the pipeline. Fetch the SteamSpy bulk catalog, apply the coarse filter to isolate a candidate set, then fetch Steam appdetails and review summaries for the survivors only. Rate limit every request, retry safely, and persist all responses verbatim into raw_games.",
+  "dependencies": {
+    "internal": ["storage", "config"],
+    "external": ["requests", "pandas"]
+  },
+  "design_notes": [
+    "Two-stage funnel per ADR-004: bulk first, per-app second. Per-app calls are expected in the low thousands, not ~150k.",
+    "Official and documented endpoints only per ADR-003. No HTML parsing of Steam Store, SteamDB or SteamCharts.",
+    "Raw responses are written verbatim per ADR-005 so enrichment never needs the network.",
+    "Published rate limits for these endpoints are not authoritative. Defaults are conservative and live in config, not in code."
+  ],
+  "public_interface": [
+    {"name": "RateLimiter", "kind": "class", "methods": ["def acquire(self) -> None", "def observe_response(self, status_code: int, headers: Mapping[str, str]) -> None", "def remaining_budget(self) -> int"], "description": "Token bucket per host. observe_response honours Retry-After and widens the interval after 429 or 5xx. Raises RequestBudgetExceeded when the per-run budget is spent."},
+    {"name": "HttpClient", "kind": "class", "methods": ["def get_json(self, url: str, params: Mapping[str, Any] | None = None) -> tuple[int, dict]"], "description": "Shared base: session reuse, timeout, custom User-Agent identifying the tool, exponential backoff with jitter, bounded retries. Returns (status_code, payload) rather than raising on 4xx so the status can be persisted."},
+    {"name": "SteamSpyClient", "kind": "class", "methods": ["def fetch_all_page(self, page: int) -> tuple[int, dict]", "def fetch_app(self, appid: int) -> tuple[int, dict]"], "description": "Wraps the SteamSpy API. The 'all' endpoint is paginated and heavily rate limited; page delay comes from AcquisitionConfig."},
+    {"name": "SteamStoreClient", "kind": "class", "methods": ["def fetch_app_details(self, appid: int) -> tuple[int, dict]"], "description": "Wraps appdetails. Locale is fixed to cc=us&l=english as module-level constants, not caller-overridable (ARCHITECTURE.md locale-pinning decision, 2026-09-20) -- so price and review fields are comparable across every run, not just within one run."},
+    {"name": "SteamReviewsClient", "kind": "class", "methods": ["def fetch_review_summary(self, appid: int) -> tuple[int, dict]"], "description": "Wraps the reviews endpoint requesting the summary only (zero review bodies) to keep payloads small."},
+    {"name": "fetch_steamspy_catalog", "kind": "function", "signature": "def fetch_steamspy_catalog(client: SteamSpyClient, *, max_pages: int | None = None, on_event: EventSink) -> Iterator[RawPayload]", "description": "Yields one RawPayload per app from the paginated bulk endpoint. Streams so the caller can persist in batches without holding the catalog in memory."},
+    {"name": "build_catalog_frame", "kind": "function", "signature": "def build_catalog_frame(payloads: Iterable[RawPayload]) -> pd.DataFrame", "description": "Flattens bulk payloads into columns: appid, name, developer, publisher, positive, negative, owners_low, owners_high, price_usd, initialprice, discount, tags."},
+    {"name": "coarse_filter", "kind": "function", "signature": "def coarse_filter(catalog: pd.DataFrame, criteria: CoarseFilterCriteria) -> FunnelResult", "description": "Applies the stage-one band. Returns survivors plus a per-reason rejection tally so the funnel stays auditable."},
+    {"name": "FunnelResult", "kind": "dataclass", "fields": ["candidates: pd.DataFrame", "total_input: int", "rejected_by_reason: dict[str, int]", "criteria: CoarseFilterCriteria"]},
+    {"name": "fetch_app_details", "kind": "function", "signature": "def fetch_app_details(client: SteamStoreClient, appids: Sequence[int], *, on_event: EventSink) -> Iterator[RawPayload]"},
+    {"name": "fetch_review_summaries", "kind": "function", "signature": "def fetch_review_summaries(client: SteamReviewsClient, appids: Sequence[int], *, on_event: EventSink) -> Iterator[RawPayload]"},
+    {"name": "run_acquisition", "kind": "function", "signature": "def run_acquisition(conn: sqlite3.Connection, run_id: str, config: AcquisitionConfig, settings: Settings, *, on_event: EventSink) -> AcquisitionReport", "description": "Stage entry point called by orchestration. Executes bulk fetch -> persist -> coarse filter -> per-app fetch -> persist, emitting progress events throughout."},
+    {"name": "AcquisitionReport", "kind": "dataclass", "fields": ["run_id: str", "catalog_size: int", "candidate_count: int", "detail_fetched: int", "detail_failed: int", "reviews_fetched: int", "reviews_failed: int", "requests_made: int", "duration_seconds: float", "funnel: FunnelResult"]},
+    {"name": "AcquisitionError", "kind": "exception"},
+    {"name": "RequestBudgetExceeded", "kind": "exception", "description": "Subclass of AcquisitionError. Fails the run loudly instead of continuing to hammer an API."}
+  ],
+  "persistence": {
+    "writes": ["raw_games (all four sources)", "run_events", "analysis_results['funnel_report']"],
+    "reads": ["runs"]
+  },
+  "coarse_filter_contract": {
+    "rejection_reasons": ["review_count_below_floor", "review_count_above_ceiling", "release_date_outside_window", "free_to_play_excluded", "price_above_max", "missing_required_field", "duplicate_appid"],
+    "note": "Threshold values are PROPOSED in FORMULATION.md section 7 and are supplied through CoarseFilterCriteria. The implementation must not embed any default band."
+  },
+  "invariants": [
+    "Every request passes through RateLimiter.acquire() first; no direct requests.get anywhere in the module",
+    "Response bodies are persisted exactly as received, including error bodies, with their HTTP status",
+    "A failed per-app fetch degrades that app, never the run: it is recorded and reported, and the run continues",
+    "Per-app fetches happen only for appids present in FunnelResult.candidates",
+    "Payloads are persisted in batches as they stream in, so a crash mid-stage leaves usable partial data"
+  ],
+  "edge_cases": [
+    "SteamSpy 'all' returns an empty page or repeats the previous page -> stop pagination, emit a warning event",
+    "appdetails returns {\"<appid>\": {\"success\": false}} -> persist verbatim with success=false, count as detail_failed, do not retry indefinitely",
+    "appdetails returns a non-game app_type (dlc, demo, video, music, tool) -> persist; exclusion happens in enrichment, not here",
+    "HTTP 429 with Retry-After -> sleep the stated interval, then resume; repeated 429 widens the base interval for the rest of the run",
+    "HTTP 5xx -> bounded exponential backoff with jitter, then mark the app failed",
+    "Connection reset / timeout / DNS failure -> same retry path as 5xx",
+    "Response is not valid JSON (HTML error page) -> persist the raw text with its status and mark failed; never attempt to parse it as a store page",
+    "Duplicate appid across bulk pages -> de-duplicated in build_catalog_frame, counted as duplicate_appid",
+    "Empty candidate set after coarse filter -> stage succeeds with candidate_count=0 and emits a warning; downstream stages must handle an empty run",
+    "Missing STEAM_WEB_API_KEY where required -> AcquisitionError before any request is issued",
+    "Clock/date parsing: release_date strings from Steam are locale-formatted and may be partial ('2019', 'Q3 2020', 'Coming soon') -> parse leniently, store the unparsed original"
+  ],
+  "testing": {
+    "unit": [
+      "RateLimiter spaces calls to the configured interval (monotonic clock injected, no real sleeping in tests)",
+      "RateLimiter honours Retry-After and raises RequestBudgetExceeded at the budget",
+      "HttpClient retries on 5xx and timeout, stops after max_retries, returns the final status",
+      "build_catalog_frame parses a recorded SteamSpy page fixture into the expected columns and dtypes",
+      "coarse_filter tallies each rejection reason correctly on a synthetic catalog covering every boundary",
+      "coarse_filter boundary behaviour is inclusive/exclusive exactly as specified at min and max review count",
+      "fetch_app_details records success=false payloads as failures without aborting the batch",
+      "non-JSON response is persisted and marked failed"
+    ],
+    "integration": ["run_acquisition against a stubbed HTTP layer writes the expected raw_games rows, funnel report and event sequence for a 20-app synthetic catalog"],
+    "fixtures": ["tests/fixtures/steamspy_all_page0.json", "tests/fixtures/appdetails_success.json", "tests/fixtures/appdetails_failure.json", "tests/fixtures/reviews_summary.json", "tests/fixtures/appdetails_html_error.html"],
+    "policy": "No test may perform a real network call."
+  },
+  "non_goals": [
+    "No field normalization or derived features (that is enrichment)",
+    "No scheduling or automatic re-crawl",
+    "No scraping of any HTML property",
+    "No incremental/delta fetch against a previous run in v1 (parent_run_id exists for this later)"
+  ],
+  "open_questions": [
+    "Country/currency pinning for appdetails: 'us' assumed. Confirm before locking, since it fixes the price basis of every revenue estimate.",
+    "Whether to also store steamspy_appdetails per candidate for tag votes, or to rely on the tag data already in the bulk payload."
+  ]
+}

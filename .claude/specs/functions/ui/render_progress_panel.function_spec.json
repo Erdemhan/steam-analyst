@@ -1,0 +1,32 @@
+{
+  "module": "ui",
+  "function_name": "render_progress_panel",
+  "file_path": "src/steam_analyst/ui/pages.py",
+  "description": "The only polling surface in the app. A self-refreshing fragment so the rest of the page (the form above it) does not rerun every 2 seconds along with the progress display.",
+  "signature": "@st.fragment(run_every='2s')\ndef render_progress_panel(db_path: Path, run_id: str) -> None",
+  "docstring": "Render live progress for one run and poll for updates.\n\nArgs:\n    db_path: Opens its own short-lived connection inside this fragment call, per ADR-017 -- never receives or caches a connection from the caller.\n    run_id: The run being watched.\n\nBehavior:\n    - with storage.connect(db_path) as conn: run = storage.get_run(conn, run_id); stages = storage.read_run_stages(conn, run_id); new_events = storage.read_run_events(conn, run_id, since_event_id=st.session_state['last_event_id']).\n    - st.session_state['event_log'].extend(new_events); if new_events: st.session_state['last_event_id'] = new_events[-1].event_id.\n    - Renders the stage list (acquisition/enrichment/analysis) with each stage's current status from stages, and the latest non-None progress value from event_log.\n    - Renders a Cancel button calling orchestration.cancel_run(run_id), disabled once cancellation has already been requested this session (a local flag, not re-derived from server state, so the button visibly disables on the very next rerun rather than waiting for the worker to actually stop).\n    - When run.status is a terminal value ('succeeded', 'failed', 'cancelled'): stop this fragment's own auto-refresh and call st.rerun() once, so the full page re-renders and (for the 'Run New Analysis' page specifically) can now show a link to the finished run's detail page instead of the live panel.\n",
+  "preconditions": [
+    "st.session_state already has 'last_event_id' and 'event_log' initialized (by whichever page first set 'active_run_id')"
+  ],
+  "postconditions": [
+    "Each poll transfers only events newer than the previous high-water mark -- read_run_events is never called with since_event_id=0 on a second or later poll within the same run",
+    "The connection opened for this poll is closed before the fragment function returns",
+    "Once run.status is terminal, no further 2-second auto-refresh occurs for this fragment"
+  ],
+  "edge_cases": [
+    {"input": "The browser tab is refreshed mid-run (session_state reset)", "expected_behavior": "last_event_id resets to 0 (its declared default); the next poll re-reads the full run_events log from the start once, rebuilding event_log, then proceeds incrementally from there -- per the ui module spec's own edge case, this is expected and acceptable, not a bug"},
+    {"input": "Cancel is pressed", "expected_behavior": "orchestration.cancel_run(run_id) is called once; the button is disabled immediately on this rerun via a local flag, even though the run's actual status has not yet changed (that happens asynchronously as the worker unwinds)"},
+    {"input": "Cancel is pressed after the run already reached a terminal status", "expected_behavior": "cancel_run returns False; no error is shown, the terminal status is simply displayed as already-final"},
+    {"input": "run_id no longer exists (should not normally happen once a panel is showing it, but defensively)", "expected_behavior": "storage.get_run returns None; the panel renders a 'run no longer found' state and stops polling, rather than raising"},
+    {"input": "A multi-thousand-app run produces a very long event_log over a long session", "expected_behavior": "the panel renders a bounded tail (e.g. the last N entries) with the full log available in an expander, per the ui module spec's own edge case, so the page does not grow unbounded"}
+  ],
+  "unit_tests": [
+    {"name": "test_incremental_read_advances_high_water_mark", "description": "Two successive polls each fetch only events newer than the previous poll's last event_id.", "inputs": {}, "expected": "second poll's read_run_events called with since_event_id equal to the first poll's max event_id"},
+    {"name": "test_terminal_status_stops_polling", "description": "Once run.status becomes 'succeeded', the fragment's own refresh stops and st.rerun() is called once.", "inputs": {}, "expected": "no further scheduled refresh; st.rerun called exactly once"},
+    {"name": "test_cancel_button_disabled_after_press", "description": "After Cancel is pressed once, the button renders disabled on the next call within the same session.", "inputs": {}, "expected": "disabled=True after one press"},
+    {"name": "test_cancel_after_finished_is_noop", "description": "Pressing Cancel when the run already finished results in no error, cancel_run returning False.", "inputs": {}, "expected": "no exception, no state change beyond the button press"},
+    {"name": "test_missing_run_shows_not_found_state", "description": "A run_id for which storage.get_run returns None renders a not-found message and does not raise.", "inputs": {"run_id": "does-not-exist"}, "expected": "no exception; 'not found' text rendered"},
+    {"name": "test_connection_closed_after_each_poll", "description": "A connection-factory spy shows exactly one open/close pair per fragment invocation.", "inputs": {}, "expected": "no leaked or cross-poll-reused connection"}
+  ],
+  "dependencies": ["storage.connect", "storage.get_run", "storage.read_run_stages", "storage.read_run_events", "orchestration.cancel_run", "SESSION_KEYS"]
+}

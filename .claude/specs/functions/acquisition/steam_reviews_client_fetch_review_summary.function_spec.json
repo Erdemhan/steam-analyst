@@ -1,0 +1,24 @@
+{
+  "module": "acquisition",
+  "function_name": "SteamReviewsClient.fetch_review_summary",
+  "file_path": "src/steam_analyst/acquisition/steam_reviews_client.py",
+  "description": "Wraps the Steam reviews endpoint, requesting the summary only (num_per_page=0 / filter=summary equivalent) so payloads stay small, pinned to the same locked locale as the storefront calls.",
+  "signature": "def fetch_review_summary(self, appid: int) -> tuple[int, dict]",
+  "docstring": "Fetch the review summary for one appid.\n\nArgs:\n    appid: The Steam application id.\n\nReturns:\n    (status_code, payload) from HttpClient.get_json. On success, payload contains query_summary with total_positive, total_negative, total_reviews, review_score, review_score_desc.\n\nNote (locale): pinned to cc=us&l=english (language filter on the reviews endpoint affects which review-language subset the summary counts are computed over on some Steam endpoints; 'english' is used consistently with appdetails per ARCHITECTURE.md's locale-pinning decision, so both figures are computed on the same basis).\n",
+  "preconditions": [
+    "appid > 0"
+  ],
+  "postconditions": [
+    "Requests zero review bodies (only the summary block), keeping response payload size minimal per the module's design note",
+    "Returns the tuple as-is from HttpClient.get_json"
+  ],
+  "edge_cases": [
+    {"input": "appid with zero reviews at all", "expected_behavior": "returns 200 with total_reviews=0, total_positive=0, total_negative=0 -- not an error"},
+    {"input": "appid does not exist / was delisted", "expected_behavior": "Steam's reviews endpoint typically still returns 200 with a success=1 and zero counts, or success=0; returned unchanged either way"}
+  ],
+  "unit_tests": [
+    {"name": "test_fetch_review_summary_parses_fixture", "description": "tests/fixtures/reviews_summary.json is returned unchanged as payload.", "inputs": {"appid": 123456}, "expected": "(200, <fixture content>)"},
+    {"name": "test_zero_reviews_not_an_error", "description": "A stubbed zero-review response returns (200, {...total_reviews: 0...}).", "inputs": {}, "expected": "(200, {...total_reviews: 0...})"}
+  ],
+  "dependencies": ["HttpClient.get_json"]
+}

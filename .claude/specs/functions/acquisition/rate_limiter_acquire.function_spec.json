@@ -1,0 +1,27 @@
+{
+  "module": "acquisition",
+  "function_name": "RateLimiter.acquire",
+  "file_path": "src/steam_analyst/acquisition/rate_limiter.py",
+  "description": "Blocks the caller until a token-bucket slot is available for this host, or raises once the per-run request budget is exhausted. Called before every single HTTP request issued by the module (invariant: 'no direct requests.get anywhere in the module').",
+  "signature": "def acquire(self) -> None",
+  "docstring": "Acquire permission to make one HTTP request.\n\nBlocks (via a monotonic-clock-based sleep, injectable in tests) until the configured interval since the last granted request has elapsed, then decrements the remaining request budget.\n\nRaises:\n    RequestBudgetExceeded: If the per-run request_budget (AcquisitionConfig.request_budget) has already been fully consumed.\n",
+  "preconditions": [
+    "The RateLimiter was constructed with a positive interval derived from AcquisitionConfig (steamspy_page_delay_seconds or steam_requests_per_minute depending on which host it guards) and a positive request_budget"
+  ],
+  "postconditions": [
+    "No two acquire() calls on the same instance return less than the configured interval apart, as measured by the injected clock",
+    "remaining_budget() decreases by exactly 1 on every successful acquire() call",
+    "Once budget reaches 0, every subsequent acquire() call raises RequestBudgetExceeded without sleeping"
+  ],
+  "edge_cases": [
+    {"input": "First call ever on a freshly constructed RateLimiter", "expected_behavior": "returns immediately (no wait), since there is no prior request to space against"},
+    {"input": "remaining_budget() == 0", "expected_behavior": "raises RequestBudgetExceeded immediately, does not sleep first"},
+    {"input": "Called from two different threads concurrently (should not happen in v1's single-pipeline-thread design, but defensively)", "expected_behavior": "internal state is protected by a lock so budget decrements are atomic and never over-counted"}
+  ],
+  "unit_tests": [
+    {"name": "test_spaces_calls_to_configured_interval", "description": "With an injected fake monotonic clock, two acquire() calls are observed to be spaced by at least the configured interval, with no real time.sleep executed (clock is advanced programmatically in the test).", "inputs": {"interval_seconds": 1.0}, "expected": "second acquire's recorded wait >= 1.0 simulated seconds"},
+    {"name": "test_raises_at_budget", "description": "A RateLimiter constructed with request_budget=2 raises on the third acquire() call.", "inputs": {"request_budget": 2}, "expected": "RequestBudgetExceeded on the 3rd call"},
+    {"name": "test_first_call_does_not_wait", "description": "The very first acquire() on a fresh instance returns without any simulated delay.", "inputs": {}, "expected": "zero simulated wait"}
+  ],
+  "dependencies": ["RequestBudgetExceeded"]
+}

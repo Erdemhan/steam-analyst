@@ -1,0 +1,20 @@
+{
+  "module": "acquisition",
+  "function_name": "RequestBudgetExceeded",
+  "file_path": "src/steam_analyst/acquisition/errors.py",
+  "description": "Subclass of AcquisitionError raised by RateLimiter.acquire() once the per-run request budget is spent, so the run fails loudly instead of continuing to hammer an API (ADR-004/006).",
+  "signature": "class RequestBudgetExceeded(AcquisitionError): ...",
+  "docstring": "Per-run HTTP request budget exhausted.\n\nRaised by RateLimiter.acquire() when remaining_budget() would go negative. Propagates up through whichever fetch_* function was mid-iteration, through run_acquisition, to orchestration, which marks the run 'failed'. Distinguished from the base AcquisitionError so callers/tests can specifically assert on budget exhaustion rather than any generic stage failure.\n",
+  "preconditions": [],
+  "postconditions": [
+    "Raising this exception means at least request_budget requests were actually made in this run before stopping"
+  ],
+  "edge_cases": [
+    {"input": "Budget exhausted exactly on the last candidate's last needed request", "expected_behavior": "that request is never attempted; RequestBudgetExceeded raised in its place, and the run is reported as failed rather than silently truncated as if it had succeeded"}
+  ],
+  "unit_tests": [
+    {"name": "test_is_subclass_of_acquisition_error", "description": "isinstance(RequestBudgetExceeded(...), AcquisitionError) is True.", "inputs": {}, "expected": true},
+    {"name": "test_raised_exactly_at_budget_limit", "description": "A RateLimiter with request_budget=5 raises RequestBudgetExceeded on the 6th acquire() call, not earlier.", "inputs": {"request_budget": 5}, "expected": "no exception on calls 1-5, RequestBudgetExceeded on call 6"}
+  ],
+  "dependencies": ["AcquisitionError"]
+}

@@ -1,0 +1,28 @@
+{
+  "module": "analysis",
+  "function_name": "label_cluster",
+  "file_path": "src/steam_analyst/analysis/clustering.py",
+  "description": "Builds a deterministic, human-readable label for one tag cluster from its highest-weight member tags, per cluster_tags' TagClusterResult.cluster_labels requirement.",
+  "signature": "def label_cluster(members: list[str], cooccurrence: pd.DataFrame) -> str",
+  "docstring": "Build a human-readable archetype label.\n\nArgs:\n    members: Tag strings belonging to one cluster.\n    cooccurrence: The full tag-by-tag co-occurrence count matrix (raw counts, not the Jaccard distance matrix) for the run, used to rank members by total within-run popularity.\n\nReturns:\n    A string joining the top 3 members (or fewer if the cluster has fewer than 3 tags) by total co-occurrence weight (row sum in `cooccurrence` restricted to `members`), separated by ' / ', e.g. 'Roguelike / Pixel Graphics / Difficult'. Deterministic: ties in weight are broken alphabetically.\n",
+  "preconditions": [
+    "members is non-empty",
+    "every tag in members is present in cooccurrence's index"
+  ],
+  "postconditions": [
+    "Returned string is non-empty",
+    "Calling label_cluster twice with identical inputs returns an identical string (determinism required by cluster_tags' own 'deterministic for a fixed input and seed' invariant)"
+  ],
+  "edge_cases": [
+    {"input": "A cluster with a single tag", "expected_behavior": "the label is exactly that one tag, no separator"},
+    {"input": "Two members tie exactly on total co-occurrence weight", "expected_behavior": "the alphabetically earlier tag is listed first"},
+    {"input": "A cluster with more than 3 tags", "expected_behavior": "only the top 3 by weight appear in the label; the rest are omitted from the label text but remain in TagClusterResult.cluster_members"}
+  ],
+  "unit_tests": [
+    {"name": "test_single_tag_cluster_label", "description": "A one-tag cluster labels as just that tag.", "inputs": {"members": ["Roguelike"]}, "expected": "Roguelike"},
+    {"name": "test_top_three_by_weight_selected", "description": "A 5-tag cluster labels with exactly its top 3 by co-occurrence weight.", "inputs": {}, "expected": "3 tags joined by ' / ', matching the expected top-3 order"},
+    {"name": "test_tie_broken_alphabetically", "description": "Two equally-weighted tags are ordered alphabetically in the label.", "inputs": {}, "expected": "alphabetically earlier tag appears first"},
+    {"name": "test_deterministic_across_calls", "description": "Two calls with identical inputs return the identical string.", "inputs": {}, "expected": "label_1 == label_2"}
+  ],
+  "dependencies": []
+}

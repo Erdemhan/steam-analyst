@@ -1,0 +1,31 @@
+{
+  "module": "config",
+  "function_name": "EnrichmentParams",
+  "file_path": "src/steam_analyst/config/settings.py",
+  "description": "Mirror of FORMULATION.md sections 2-5 (Boxleiter multipliers, revenue factors, complexity weights/bounds, effort epsilon). Every field here is a direct, user-locked value; the enrichment module is forbidden from hard-coding any of them.",
+  "signature": "@dataclass(frozen=True)\nclass EnrichmentParams:\n    boxleiter_multipliers: dict[str, tuple[float, float, float]]\n    genre_bucket_map: dict[str, str]\n    storefront_cut: float\n    discount_factor: float\n    refund_regional_factor: float\n    complexity_weights: dict[str, float]\n    complexity_bounds: dict[str, tuple[float, float]]\n    simplicity_tags: list[str]\n    complexity_tags: list[str]\n    effort_epsilon: float",
+  "docstring": "Enrichment-stage constants (FORMULATION.md sections 2-5).\n\nAttributes:\n    boxleiter_multipliers: Keyed by the three FORMULATION.md section 2 bucket names ('niche', 'mainstream', 'broad_audience'); each value is (m_low, m_mid, m_high). Locked values: (20,27,35), (30,37,45), (40,50,65) respectively.\n    genre_bucket_map: Maps a Steam genre string to one of the three bucket keys above. Unmatched genres fall to 'mainstream' (the documented default bucket, includes Horror and RPG per FORMULATION.md section 2).\n    storefront_cut: tau. Locked value: 0.30.\n    discount_factor: delta. Locked value: 0.0 (FORMULATION.md section 3 -- deliberately conservative-on-assumptions choice).\n    refund_regional_factor: rho. Locked value: 0.0.\n    complexity_weights: Nine feature weights from FORMULATION.md section 4, summing to 1.0 (install_size=0.20, early_access_duration=0.15, dev_catalog_size=0.15, simplicity_tag_score=0.10, complexity_tag_score=0.10, achievement_count=0.10, dlc_count=0.10, platform_count=0.05, language_count=0.05).\n    complexity_bounds: Per-feature (a, b) log-scale normalization bounds. PROVISIONAL until scripts/freeze_empirical_parameters.py has run once against run 1's data (ADR-012); load_parameters must accept a placeholder/empty dict here without failing so run 1 itself can execute, but compute_complexity_score must then treat a missing feature's bounds as 'not yet frozen' and impute at the cohort median for that feature rather than dividing by an undefined (b - a).\n    simplicity_tags: Tag strings that reduce complexity_tag_score negatively (pixel-art, 2D, casual, short, singleplayer, ...).\n    complexity_tags: Tag strings that raise complexity_tag_score positively (open-world, multiplayer, physics, procedural, ...).\n    effort_epsilon: epsilon in E_i = R_i^net / (C_i + epsilon). Locked value: 0.05.\n",
+  "preconditions": [
+    "sum(complexity_weights.values()) == 1.0 within 1e-6 tolerance",
+    "storefront_cut, discount_factor, refund_regional_factor are each in [0, 1]",
+    "effort_epsilon > 0",
+    "for every bucket, m_low <= m_mid <= m_high",
+    "every genre referenced in genre_bucket_map maps to a key present in boxleiter_multipliers"
+  ],
+  "postconditions": [
+    "Instance is frozen; stamped implicitly via config.parameters_version whenever any field's serialized TOML representation changes"
+  ],
+  "edge_cases": [
+    {"input": "complexity_weights values sum to 0.999999 (floating point drift)", "expected_behavior": "accepted -- validate_parameters uses a 1e-6 tolerance, not exact equality"},
+    {"input": "complexity_weights values sum to 0.9", "expected_behavior": "ParameterError naming the actual sum"},
+    {"input": "a multiplier triple with m_low > m_mid", "expected_behavior": "ParameterError naming the offending bucket"},
+    {"input": "complexity_bounds missing entirely (run 1, pre-freeze)", "expected_behavior": "accepted as an empty dict; downstream compute_complexity_score treats every feature as unfrozen and imputes at the cohort median instead of normalizing, per ADR-012"},
+    {"input": "effort_epsilon == 0", "expected_behavior": "ParameterError -- epsilon must stay strictly positive to keep E_i finite as C_i -> 0"}
+  ],
+  "unit_tests": [
+    {"name": "test_weights_must_sum_to_one", "description": "complexity_weights summing to 0.9 raises ParameterError.", "inputs": {"complexity_weights": {"install_size": 0.9}}, "expected": "ParameterError"},
+    {"name": "test_locked_epsilon_round_trips", "description": "A fixture TOML with effort_epsilon = 0.05 produces EnrichmentParams.effort_epsilon == 0.05 exactly.", "inputs": {}, "expected": 0.05},
+    {"name": "test_empty_complexity_bounds_accepted_pre_freeze", "description": "A parameters.toml with no [complexity_bounds] table still loads successfully.", "inputs": {}, "expected": "EnrichmentParams.complexity_bounds == {}"}
+  ],
+  "dependencies": []
+}

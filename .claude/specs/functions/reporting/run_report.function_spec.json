@@ -1,0 +1,24 @@
+{
+  "module": "reporting",
+  "function_name": "RunReport",
+  "file_path": "src/steam_analyst/reporting/report.py",
+  "description": "The single object load_run_report assembles for the Analysis Detail UI page.",
+  "signature": "@dataclass(frozen=True)\nclass RunReport:\n    run_id: str\n    run: RunRecord\n    stages: list[RunStage]\n    missing_stages: list[str]\n    opportunity_matrix: pd.DataFrame\n    tag_summary: pd.DataFrame\n    tag_trends: pd.DataFrame\n    case_studies: list[CaseStudy]\n    funnel: FunnelSummary\n    headline_metrics: dict[str, Any]\n    caveats: list[Caveat]\n    is_partial: bool",
+  "docstring": "Everything the Analysis Detail page needs for one run.\n\nAttributes:\n    run: storage.RunRecord for context (status, timestamps, config snapshot).\n    stages: storage.read_run_stages(conn, run_id) verbatim, in pipeline order.\n    missing_stages: the subset of ('acquisition', 'enrichment', 'analysis') absent from stages or not status='succeeded' in stages, in pipeline order. Empty when the run succeeded cleanly. This is what render_analysis_detail_page and partial_run_caveat name explicitly in the UI (ui module spec edge case 'detail page opened for a run that is still running -> ... with the missing stages named').\n    opportunity_matrix, tag_summary, tag_trends: build_opportunity_matrix_view / build_tag_summary_table output and the raw tag_trends analysis_results payload respectively (tag_trends is not separately view-formatted by a dedicated public function in the current module spec -- reused directly here, display-rounding applied inline).\n    case_studies: select_case_studies' output (CaseStudySelection.case_studies, already unwrapped).\n    funnel: FunnelSummary.\n    headline_metrics: headline_metrics(self) -- see that function's own spec; included as a field for convenience so a caller needing only the summary does not have to call a second function.\n    caveats: interpretive_caveats(), plus one appended Caveat(key='archetype_cap_relaxed') when select_case_studies' CaseStudySelection.archetype_cap_relaxed was True for this run.\n    is_partial: is_partial_run(stages) -- ADR-016's single canonical definition, derived from stages, never from run.status alone, since run.status can lag behind per-stage detail for a partially-completed run.\n",
+  "preconditions": [],
+  "postconditions": [
+    "is_partial == bool(missing_stages) -- the two fields are never inconsistent with each other",
+    "missing_stages preserves pipeline order (acquisition, enrichment, analysis), never insertion or attempt order",
+    "Every DataFrame field is well-formed (correct columns) even when empty, never a bare empty DataFrame with no column information"
+  ],
+  "edge_cases": [
+    {"input": "A run with status='running' polled mid-pipeline, acquisition succeeded, enrichment not yet begun", "expected_behavior": "is_partial=True; missing_stages=['enrichment', 'analysis']; frames reflect whatever analysis_results rows exist so far (possibly all empty)"},
+    {"input": "A run with status='failed' partway through enrichment", "expected_behavior": "is_partial=True; missing_stages=['enrichment', 'analysis'] (a stage whose own run_stages row is 'failed' counts as missing, per missing_stages' definition, distinct from a stage that simply never started); run.error_message is accessible via the run field"},
+    {"input": "A run where storage.read_run_stages returns zero rows at all (crashed before any begin_run_stage call)", "expected_behavior": "is_partial=True; missing_stages=['acquisition', 'enrichment', 'analysis']"}
+  ],
+  "unit_tests": [
+    {"name": "test_succeeded_run_not_partial", "description": "A fully succeeded fixture run has is_partial=False and missing_stages=[].", "inputs": {}, "expected": "is_partial=False, missing_stages=[]"},
+    {"name": "test_running_run_is_partial", "description": "A run with status='running' and only acquisition succeeded has is_partial=True and missing_stages=['enrichment', 'analysis'].", "inputs": {}, "expected": "is_partial=True, missing_stages=['enrichment', 'analysis']"}
+  ],
+  "dependencies": ["FunnelSummary", "CaseStudy", "Caveat", "storage.RunStage", "is_partial_run"]
+}

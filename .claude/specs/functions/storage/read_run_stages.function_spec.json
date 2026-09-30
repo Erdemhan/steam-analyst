@@ -1,0 +1,25 @@
+{
+  "module": "storage",
+  "function_name": "read_run_stages",
+  "file_path": "src/steam_analyst/storage/run_stages.py",
+  "description": "Returns every stage attempted for a run, ordered by pipeline order. A stage never attempted has no row at all, so 'not started' and 'started but pending' remain distinguishable -- this is what reporting.load_run_report uses to derive is_partial (ADR-016).",
+  "signature": "def read_run_stages(conn: sqlite3.Connection, run_id: str) -> list[RunStage]",
+  "docstring": "Read every attempted stage's status for a run.\n\nArgs:\n    conn: An open connection.\n    run_id: The run to read stages for. Does not need to exist -- see edge cases.\n\nReturns:\n    A list of RunStage, ordered acquisition, enrichment, analysis regardless of insertion order. Stages never attempted are simply absent from the list.\n",
+  "preconditions": [],
+  "postconditions": [
+    "The returned list is ordered by pipeline stage order (acquisition, enrichment, analysis), never by insertion or attempt time",
+    "A run with all three stages succeeded returns exactly three RunStage entries, each status='succeeded'"
+  ],
+  "edge_cases": [
+    {"input": "run_id exists but no stage has ever been begun", "expected_behavior": "empty list, not an error"},
+    {"input": "run_id does not exist in runs at all", "expected_behavior": "empty list, not StorageError -- read_run_stages does not validate run existence, mirroring read_run_events' and read_enriched's own tolerant-read contracts; a caller wanting existence validation calls get_run separately"},
+    {"input": "Only enrichment has ever been begun (acquisition row missing, e.g. from a hand-edited fixture)", "expected_behavior": "returns a single-element list containing only the enrichment row -- read_run_stages does not synthesize missing rows"}
+  ],
+  "unit_tests": [
+    {"name": "test_all_three_stages_succeeded", "description": "A run with all three stages begun and finished 'succeeded' returns three RunStage rows in pipeline order.", "inputs": {"run_id": "r1"}, "expected": "[RunStage(stage='acquisition', status='succeeded'), RunStage(stage='enrichment', ...), RunStage(stage='analysis', ...)]"},
+    {"name": "test_no_stages_attempted_returns_empty", "description": "A freshly created run with no begin_run_stage calls yet returns an empty list.", "inputs": {"run_id": "r2"}, "expected": "[]"},
+    {"name": "test_unknown_run_id_returns_empty_not_error", "description": "A nonexistent run_id returns an empty list rather than raising.", "inputs": {"run_id": "does-not-exist"}, "expected": "[]"},
+    {"name": "test_ordering_independent_of_attempt_order", "description": "If analysis was begun before acquisition (e.g. a targeted stage re-run via PipelineConfig.start_stage), the returned order is still acquisition, enrichment, analysis.", "inputs": {"run_id": "r3"}, "expected": "list ordered by pipeline stage, not by started_at"}
+  ],
+  "dependencies": []
+}

@@ -1,0 +1,32 @@
+{
+  "module": "reporting",
+  "function_name": "select_case_studies",
+  "file_path": "src/steam_analyst/reporting/case_studies.py",
+  "description": "Ranks the simple/buildable subset by effort_adjusted_return, enforcing per-archetype and per-developer diversity caps so the list does not collapse onto one studio or one genre. Default top_n=15, confirmed. Returns a small result wrapper rather than a bare list so the one-time archetype-cap relaxation (module spec's own edge case) has an explicit, testable place to surface -- resolves the open question this spec previously flagged.",
+  "signature": "def select_case_studies(enriched: pd.DataFrame, assignments: pd.DataFrame, *, top_n: int = 15, max_per_archetype: int = 2, max_per_developer: int = 1) -> CaseStudySelection",
+  "docstring": "Select and rank case studies.\n\nArgs:\n    enriched: games_enriched rows for the run, already restricted to the simplicity-filtered buildable subset (analysis.apply_simplicity_filter's output, re-read from storage or recomputed) -- a game with NaN effort_adjusted_return (F2P or NULL complexity) is excluded from ranking entirely, since it has no defined ordinal value.\n    assignments: cluster_tags' TagClusterResult.assignments, for archetype_label lookup.\n    top_n: Target list size. Locked default: 15.\n    max_per_archetype: Cap on entries sharing the same cluster_id.\n    max_per_developer: Cap on entries sharing the same developer string (exact match, same caveat as enrichment.compute_developer_catalog_size about no fuzzy matching).\n\nReturns:\n    CaseStudySelection(case_studies, archetype_cap_relaxed). case_studies holds up to top_n CaseStudy, ranked by effort_adjusted_return descending, subject to the diversity caps applied greedily in rank order (a candidate is skipped, not just deprioritized, if adding it would exceed either cap for its archetype or developer). archetype_cap_relaxed is True iff the one-time relaxation below actually fired.\n\nRelaxation rule: if applying both caps strictly cannot fill top_n slots (pool exhausted under the caps while candidates remain), max_per_archetype is relaxed by +1 ONCE (a single relaxation pass, not an unbounded loop) and archetype_cap_relaxed is set True. load_run_report reads this flag and, when True, appends one extra Caveat (key='archetype_cap_relaxed') to RunReport.caveats -- RunReport.case_studies itself stays a plain list[CaseStudy] (load_run_report unwraps CaseStudySelection), so this change does not ripple into RunReport's own shape.\n",
+  "preconditions": [
+    "top_n > 0",
+    "max_per_archetype >= 1",
+    "max_per_developer >= 1"
+  ],
+  "postconditions": [
+    "selection.case_studies has at most top_n entries",
+    "No archetype contributes more than max_per_archetype entries to selection.case_studies UNLESS selection.archetype_cap_relaxed is True, in which case no archetype contributes more than max_per_archetype + 1",
+    "No developer contributes more than max_per_developer entries (this cap is never relaxed, only the archetype cap is, per the module's own edge case wording)",
+    "selection.case_studies is ordered by effort_adjusted_return descending",
+    "selection.archetype_cap_relaxed is False whenever the strict caps already filled top_n or exhausted the eligible pool without needing relaxation"
+  ],
+  "edge_cases": [
+    {"input": "Fewer eligible candidates than top_n after ranking and NaN-exclusion", "expected_behavior": "returns fewer than top_n, WITHOUT padding, per the module's own testing requirement"},
+    {"input": "Diversity caps make top_n unreachable even before relaxation (e.g. only 3 distinct developers exist and max_per_developer=1 caps the list at 3 regardless of archetype diversity)", "expected_behavior": "returns as many as the caps allow; the archetype-cap relaxation does not help since the binding constraint here is max_per_developer, which is never relaxed -- returns fewer than top_n"},
+    {"input": "Every top-ranked candidate belongs to the same single archetype", "expected_behavior": "only max_per_archetype of them are taken at first pass; lower-ranked, different-archetype candidates fill the remaining slots before any relaxation is considered"}
+  ],
+  "unit_tests": [
+    {"name": "test_respects_max_per_archetype_and_developer", "description": "A fixture where the top 15 candidates by effort_adjusted_return include 5 from one archetype and 3 from one developer is capped correctly, per the module's own testing requirement.", "inputs": {"max_per_archetype": 2, "max_per_developer": 1}, "expected": "no archetype has > 2 entries, no developer has > 1 entry"},
+    {"name": "test_returns_fewer_than_top_n_without_padding", "description": "A pool of only 8 eligible candidates with top_n=15 returns exactly 8, per the module's own testing requirement.", "inputs": {"top_n": 15}, "expected": "8 entries"},
+    {"name": "test_archetype_cap_relaxed_once_when_needed", "description": "A pool where strict caps leave slots unfilled triggers exactly one relaxation of max_per_archetype, filling more slots without exceeding max_per_archetype+1 for any archetype.", "inputs": {}, "expected": "some archetype has exactly max_per_archetype+1 entries, none has more"},
+    {"name": "test_nan_effort_adjusted_return_excluded", "description": "A F2P candidate with NaN effort_adjusted_return is never selected regardless of its other metrics.", "inputs": {}, "expected": "excluded from result"}
+  ],
+  "dependencies": ["CaseStudy", "CaseStudySelection", "build_rationale"]
+}

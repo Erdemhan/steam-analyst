@@ -1,0 +1,31 @@
+{
+  "module": "storage",
+  "function_name": "begin_run_stage",
+  "file_path": "src/steam_analyst/storage/run_stages.py",
+  "description": "Marks one stage of one run as started, creating its run_stages row on first attempt or re-opening it on a resume/re-run (ADR-014). Committed immediately so a concurrent reader (the UI) observes the transition without waiting for the stage itself to finish.",
+  "signature": "def begin_run_stage(conn: sqlite3.Connection, run_id: str, stage: str) -> int",
+  "docstring": "Transition one run_stages row to 'running', creating it if absent.\n\nArgs:\n    conn: An open connection.\n    run_id: The run this stage belongs to. Must already exist in runs.\n    stage: One of 'acquisition', 'enrichment', 'analysis'.\n\nReturns:\n    The new attempt number (1 for a first attempt, incremented on every subsequent call for the same run_id/stage).\n\nRaises:\n    StorageError: If run_id does not exist, or stage is not one of the three allowed values.\n",
+  "preconditions": [
+    "run_id already exists in runs",
+    "stage in {'acquisition', 'enrichment', 'analysis'}"
+  ],
+  "postconditions": [
+    "read_run_stages(conn, run_id) includes a row for stage with status='running', started_at set, finished_at and error_message cleared to NULL",
+    "The returned attempt number equals the row's attempt column after the call",
+    "The write is committed before begin_run_stage returns (ADR-016: the pipeline's own subsequent data writes for this stage must be able to assume this status is already visible to a reader)"
+  ],
+  "edge_cases": [
+    {"input": "First attempt of a stage for a given run_id (no existing row)", "expected_behavior": "row is created with attempt=1, status='running'"},
+    {"input": "Stage was previously 'succeeded' and begin_run_stage is called again (resume or deliberate re-run after a parameter change)", "expected_behavior": "legal; attempt increments, status resets to 'running', finished_at and error_message are cleared -- this is how ADR-014 resume and ADR-009 stage re-runs both work"},
+    {"input": "Stage is currently 'running' (e.g. a stale row from a crashed process, see reconcile_orphaned_runs in orchestration)", "expected_behavior": "storage does not itself detect staleness; it re-opens the row as instructed. Detecting and reconciling an orphaned 'running' row on startup is orchestration's responsibility, not storage's"},
+    {"input": "run_id does not exist", "expected_behavior": "StorageError"},
+    {"input": "stage='orchestration' or any value outside the CHECK-constrained set", "expected_behavior": "StorageError before any write"}
+  ],
+  "unit_tests": [
+    {"name": "test_first_attempt_creates_row", "description": "Calling begin_run_stage for a stage never attempted creates the row with attempt=1.", "inputs": {"run_id": "r1", "stage": "acquisition"}, "expected": "returns 1; read_run_stages shows one row, status='running'"},
+    {"name": "test_reattempt_increments_and_resets", "description": "A second begin_run_stage call for the same run_id/stage after finish_run_stage('succeeded') increments attempt and clears finished_at/error_message.", "inputs": {"run_id": "r1", "stage": "acquisition"}, "expected": "returns 2; status='running', finished_at is None"},
+    {"name": "test_unknown_run_id_raises", "description": "begin_run_stage for a run_id absent from runs raises StorageError.", "inputs": {"run_id": "missing", "stage": "acquisition"}, "expected": "StorageError"},
+    {"name": "test_invalid_stage_raises", "description": "An out-of-vocabulary stage name raises StorageError before any write.", "inputs": {"run_id": "r1", "stage": "orchestration"}, "expected": "StorageError"}
+  ],
+  "dependencies": ["read_run_stages"]
+}

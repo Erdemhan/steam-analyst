@@ -1,0 +1,30 @@
+{
+  "module": "storage",
+  "function_name": "append_run_event",
+  "file_path": "src/steam_analyst/storage/events.py",
+  "description": "Append-only progress/log record for a run. Committed immediately so a reader on a different thread/connection can observe it (WAL mode, ADR-006).",
+  "signature": "def append_run_event(conn: sqlite3.Connection, run_id: str, *, stage: str, level: str, message: str, progress: float | None = None) -> int",
+  "docstring": "Append one progress/log event.\n\nArgs:\n    conn: An open connection (the pipeline's own connection, per ADR-006's 'one connection per thread' rule).\n    run_id: The run this event belongs to.\n    stage: Pipeline stage name, e.g. 'acquisition', 'enrichment', 'analysis'.\n    level: One of 'debug', 'info', 'warning', 'error'.\n    message: Human-readable, English-language event text.\n    progress: Fractional completion in [0.0, 1.0], or None.\n\nReturns:\n    The generated event_id (monotonically increasing per database).\n\nRaises:\n    StorageError: If run_id does not exist, level is invalid, or progress is outside [0.0, 1.0].\n",
+  "preconditions": [
+    "run_id already exists in runs",
+    "level in {'debug','info','warning','error'}",
+    "progress is None or 0.0 <= progress <= 1.0"
+  ],
+  "postconditions": [
+    "The row is committed to disk before the function returns (no batching/deferred commit), so a concurrent reader immediately sees it under WAL",
+    "event_id values are strictly increasing across the whole database, not just per run"
+  ],
+  "edge_cases": [
+    {"input": "run_id does not exist", "expected_behavior": "StorageError (foreign key violation wrapped)"},
+    {"input": "progress=1.5", "expected_behavior": "StorageError, rejected before the INSERT"},
+    {"input": "message is an empty string", "expected_behavior": "accepted -- storage does not enforce non-empty messages; an empty message is a caller-quality issue, not a storage-layer invariant"},
+    {"input": "Called concurrently from two different EventSink instances writing to the same run_id via separate connections", "expected_behavior": "both succeed with distinct, correctly ordered event_ids; SQLite's own locking under WAL serializes the two writers"}
+  ],
+  "unit_tests": [
+    {"name": "test_append_and_read_back", "description": "An appended event is immediately visible via read_run_events.", "inputs": {"stage": "acquisition", "level": "info", "message": "starting", "progress": 0.0}, "expected": "read_run_events returns exactly one matching RunEvent"},
+    {"name": "test_invalid_level_raises", "description": "level='verbose' raises StorageError.", "inputs": {"level": "verbose"}, "expected": "StorageError"},
+    {"name": "test_progress_out_of_range_raises", "description": "progress=1.5 raises StorageError.", "inputs": {"progress": 1.5}, "expected": "StorageError"},
+    {"name": "test_unknown_run_id_raises", "description": "Appending to a nonexistent run_id raises StorageError.", "inputs": {"run_id": "does-not-exist"}, "expected": "StorageError"}
+  ],
+  "dependencies": []
+}

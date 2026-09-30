@@ -1,0 +1,28 @@
+{
+  "module": "storage",
+  "function_name": "migrate",
+  "file_path": "src/steam_analyst/storage/schema.py",
+  "description": "Applies ordered schema migrations, one transaction per migration step, from the database's current version up to target_version (or the latest known version if None).",
+  "signature": "def migrate(conn: sqlite3.Connection, target_version: int | None = None) -> int",
+  "docstring": "Apply pending migrations in order.\n\nArgs:\n    conn: An open connection.\n    target_version: Version to migrate to. None means the latest version this codebase knows about.\n\nReturns:\n    The resulting schema version after all applicable migrations have run (equal to target_version on success).\n\nRaises:\n    StorageError: If target_version is lower than the current version (downgrade is unsupported), if target_version is higher than the latest known migration, or if any individual migration step fails (the failing step's transaction is rolled back, and prior successful steps in this call remain committed since each step is its own transaction).\n",
+  "preconditions": [
+    "conn was opened by get_connection",
+    "initialize_schema or a prior migrate call has already established a valid schema_meta row (migrate does not create the schema_meta table itself if entirely absent -- initialize_schema does)"
+  ],
+  "postconditions": [
+    "current_schema_version(conn) == the returned value after a successful call",
+    "All rows present before migration remain present and correctly typed after migration (no silent data loss for the columns that carry forward)"
+  ],
+  "edge_cases": [
+    {"input": "target_version equal to the current version", "expected_behavior": "no-op, returns the current version unchanged"},
+    {"input": "target_version lower than the current version", "expected_behavior": "StorageError -- downgrade unsupported"},
+    {"input": "target_version higher than the latest migration this code knows about", "expected_behavior": "StorageError naming the highest available version"},
+    {"input": "A migration step raises partway through (e.g. a malformed ALTER TABLE on a fixture with unexpected legacy data)", "expected_behavior": "that step's transaction rolls back entirely; already-applied earlier steps in the same call remain committed; current_schema_version reflects the last successfully applied step, not the failed target"}
+  ],
+  "unit_tests": [
+    {"name": "test_migrate_from_older_fixture_reaches_current_version", "description": "tests/fixtures/db_schema_v1.sqlite migrated to None (latest) ends at CURRENT_SCHEMA_VERSION and preserves all pre-existing rows.", "inputs": {"target_version": null}, "expected": "current_schema_version == CURRENT_SCHEMA_VERSION, row counts unchanged"},
+    {"name": "test_downgrade_rejected", "description": "Migrating from version 2 to target_version=1 raises StorageError.", "inputs": {"target_version": 1}, "expected": "StorageError"},
+    {"name": "test_noop_when_already_at_target", "description": "Migrating to the current version is a no-op.", "inputs": {}, "expected": "unchanged version, no exception"}
+  ],
+  "dependencies": ["current_schema_version", "initialize_schema"]
+}

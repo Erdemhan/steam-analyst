@@ -1,0 +1,29 @@
+{
+  "module": "storage",
+  "function_name": "write_analysis_result",
+  "file_path": "src/steam_analyst/storage/analysis_results.py",
+  "description": "Writes (or replaces) one analysis_results row for a run and analysis_type.",
+  "signature": "def write_analysis_result(conn: sqlite3.Connection, run_id: str, analysis_type: str, payload: dict, *, parameters_version: str) -> None",
+  "docstring": "Write one analysis result blob.\n\nArgs:\n    conn: An open connection.\n    run_id: The run this result belongs to.\n    analysis_type: One of 'opportunity_matrix', 'tag_summary', 'tag_clusters', 'tag_trends', 'competition_density', 'funnel_report', 'case_studies'.\n    payload: A JSON-serializable dict; stored verbatim as payload_json.\n    parameters_version: The parameter-set hash in effect when this result was produced.\n\nReturns:\n    None.\n\nRaises:\n    StorageError: If run_id does not exist, analysis_type is not one of the seven allowed values, or payload is not JSON-serializable.\n",
+  "preconditions": [
+    "run_id already exists in runs",
+    "analysis_type in the fixed seven-value set from the schema",
+    "payload is JSON-serializable (no non-finite floats such as NaN/Infinity, since strict JSON has no representation for them; callers must convert to null/None first)"
+  ],
+  "postconditions": [
+    "read_analysis_result(conn, run_id, analysis_type) returns exactly payload (deep-equal) after a successful write",
+    "Writing the same (run_id, analysis_type) again replaces the prior row (primary key is (run_id, analysis_type))"
+  ],
+  "edge_cases": [
+    {"input": "payload contains a float('nan') anywhere in the structure", "expected_behavior": "StorageError -- NaN is not valid JSON; callers must pre-convert to None"},
+    {"input": "analysis_type='unsupported_type'", "expected_behavior": "StorageError before any write is attempted"},
+    {"input": "Writing the same (run_id, analysis_type) twice with different payloads", "expected_behavior": "the second write fully replaces the first; read_analysis_result reflects only the latest"}
+  ],
+  "unit_tests": [
+    {"name": "test_write_then_read_roundtrip", "description": "A nested dict payload round-trips through write/read unchanged.", "inputs": {"analysis_type": "opportunity_matrix", "payload": {"clusters": [{"id": 1, "score": 0.8}]}}, "expected": "read_analysis_result returns the identical dict"},
+    {"name": "test_rewrite_replaces_prior_value", "description": "A second write for the same key overwrites the first.", "inputs": {}, "expected": "read_analysis_result reflects only the second payload"},
+    {"name": "test_nan_in_payload_raises", "description": "A payload containing float('nan') raises StorageError.", "inputs": {"payload": {"x": "NaN-placeholder"}}, "expected": "StorageError for an actual float('nan') value"},
+    {"name": "test_invalid_analysis_type_raises", "description": "analysis_type='bogus_type' raises StorageError.", "inputs": {"analysis_type": "bogus_type"}, "expected": "StorageError"}
+  ],
+  "dependencies": []
+}

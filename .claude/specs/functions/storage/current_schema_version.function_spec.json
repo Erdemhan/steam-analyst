@@ -1,0 +1,22 @@
+{
+  "module": "storage",
+  "function_name": "current_schema_version",
+  "file_path": "src/steam_analyst/storage/schema.py",
+  "description": "Reads the current schema version from schema_meta.",
+  "signature": "def current_schema_version(conn: sqlite3.Connection) -> int",
+  "docstring": "Return the schema version currently applied to this database.\n\nArgs:\n    conn: An open connection.\n\nReturns:\n    The integer version from the most recent schema_meta row, or 0 if schema_meta does not exist yet (a database that has never been initialized).\n",
+  "preconditions": [],
+  "postconditions": [
+    "Return value is >= 0",
+    "Never raises for a well-formed connection, even against a completely empty database file"
+  ],
+  "edge_cases": [
+    {"input": "Database has no tables at all", "expected_behavior": "returns 0"},
+    {"input": "schema_meta has multiple rows (should not normally happen)", "expected_behavior": "returns the maximum version present"}
+  ],
+  "unit_tests": [
+    {"name": "test_returns_zero_for_uninitialized_db", "description": "A brand-new in-memory connection with no schema returns 0.", "inputs": {}, "expected": 0},
+    {"name": "test_returns_applied_version_after_init", "description": "After initialize_schema, returns the current target version.", "inputs": {}, "expected": "the constant CURRENT_SCHEMA_VERSION defined in schema.py"}
+  ],
+  "dependencies": []
+}

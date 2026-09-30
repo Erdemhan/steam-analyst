@@ -1,0 +1,33 @@
+{
+  "module": "config",
+  "function_name": "AnalysisParams",
+  "file_path": "src/steam_analyst/config/settings.py",
+  "description": "Mirror of FORMULATION.md sections 3a and 6 (simplicity threshold, archetype clustering, demand/competition/opportunity). Field names now match 00_config.module_spec.json exactly (that file was corrected after an earlier draft of this spec was written with a stale name -- max_complexity_score was renamed to simplicity_percentile; this spec previously lagged that rename and has now been fixed to match).",
+  "signature": "@dataclass(frozen=True)\nclass AnalysisParams:\n    simplicity_percentile: float\n    trailing_window_months: int\n    min_cluster_size: int\n    opportunity_weights: dict[str, float]\n    min_tag_votes: int\n    max_tags_per_game: int\n    tag_distance_threshold: float | None\n    clustering_linkage: str",
+  "docstring": "Analysis-stage constants (FORMULATION.md sections 3a and 6).\n\nAttributes:\n    simplicity_percentile: A percentile in (0, 1], not an absolute score -- FORMULATION.md section 3a defines 'simple enough to build' as the bottom 40th percentile (locked value: 0.40) of C_i within the same run's candidate set. apply_simplicity_filter computes the actual C_i cutoff value per run from this percentile; this field is never itself a complexity score.\n    trailing_window_months: W. Locked value: 24.\n    min_cluster_size: Locked value: 5 games.\n    opportunity_weights: {'demand': 0.40, 'competition': 0.30, 'simplicity': 0.30} -- w_D, w_K, w_Sigma.\n    min_tag_votes: Tags below this vote count are excluded before clustering.\n    max_tags_per_game: Cap on tags retained per app in extract_tags.\n    tag_distance_threshold: The empirically-frozen Jaccard distance-cut threshold for agglomerative clustering (FORMULATION.md section 6). None until scripts/freeze_empirical_parameters.py has run once against run 1's data (ADR-012); cluster_tags must fall back to a locally-computed threshold search (see cluster_tags spec) when this is None, and use the frozen value verbatim once present, never re-deriving it silently on a run where a frozen value already exists.\n    clustering_linkage: Agglomerative-clustering linkage criterion, e.g. 'average' or 'complete'. Not specified by FORMULATION.md section 6 at all -- flagged as an open judgment call below; 'average' linkage is the conventional default for Jaccard-distance hierarchical clustering in the literature and is assumed here pending explicit confirmation.\n\nJUDGMENT CALL / INCONSISTENCY (flag to user): FORMULATION.md section 6 locks the clustering *method* (agglomerative, Jaccard tag-distance, no genre anchor, empirically-derived cut threshold) but specifies neither (a) the linkage criterion (single/complete/average/ward -- ward is invalid for a non-Euclidean Jaccard distance matrix, so the real choice is among single/complete/average), nor (b) the exact search procedure for picking the distance-cut threshold beyond the qualitative goal 'keep median cluster size in a reasonable range... tuned so at least half of clusters clear the minimum-cluster-size rule'. Both are needed to write a deterministic, testable cluster_tags implementation and are currently filled in by this spec as an assumption (average linkage; threshold search framed as 'smallest cut such that at least 50% of resulting clusters have >= min_cluster_size members', scanning the matrix's distinct distance values) rather than as a locked decision.\n",
+  "preconditions": [
+    "0 < simplicity_percentile <= 1.0",
+    "trailing_window_months > 0",
+    "min_cluster_size >= 1",
+    "sum(opportunity_weights.values()) == 1.0 within 1e-6 tolerance",
+    "opportunity_weights has exactly the keys {'demand', 'competition', 'simplicity'}",
+    "min_tag_votes >= 0",
+    "max_tags_per_game >= 1",
+    "tag_distance_threshold is None or 0.0 <= tag_distance_threshold <= 1.0 (Jaccard distance range)",
+    "clustering_linkage in {'single', 'complete', 'average'}"
+  ],
+  "postconditions": [
+    "Instance is frozen for the run"
+  ],
+  "edge_cases": [
+    {"input": "opportunity_weights missing the 'simplicity' key", "expected_behavior": "ParameterError naming the missing key"},
+    {"input": "tag_distance_threshold present but outside [0, 1]", "expected_behavior": "ParameterError, since Jaccard distance is bounded in [0, 1] by construction"},
+    {"input": "clustering_linkage == 'ward'", "expected_behavior": "ParameterError -- ward linkage requires a Euclidean distance and is invalid for a precomputed Jaccard distance matrix"}
+  ],
+  "unit_tests": [
+    {"name": "test_opportunity_weights_exact_keys_and_sum", "description": "opportunity_weights with an extra or missing key, or a sum != 1.0, raises ParameterError.", "inputs": {"opportunity_weights": {"demand": 0.5, "competition": 0.5}}, "expected": "ParameterError"},
+    {"name": "test_ward_linkage_rejected", "description": "clustering_linkage = 'ward' raises ParameterError.", "inputs": {"clustering_linkage": "ward"}, "expected": "ParameterError"},
+    {"name": "test_none_threshold_accepted_pre_freeze", "description": "tag_distance_threshold omitted from TOML loads as None.", "inputs": {}, "expected": "None"}
+  ],
+  "dependencies": []
+}

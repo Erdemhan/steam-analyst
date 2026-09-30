@@ -1,0 +1,27 @@
+{
+  "module": "config",
+  "function_name": "load_settings",
+  "file_path": "src/steam_analyst/config/settings.py",
+  "description": "Reads .env (via python-dotenv) and the process environment, resolves filesystem paths absolutely, and constructs a Settings instance. Missing STEAM_WEB_API_KEY is not fatal here; it is validated lazily by the acquisition client that first needs it.",
+  "signature": "def load_settings(env_path: Path | None = None) -> Settings",
+  "docstring": "Load environment-derived settings.\n\nArgs:\n    env_path: Explicit path to a .env file. If None, python-dotenv's default discovery (cwd and parents) is used. Tests always pass an explicit fixture path so discovery never touches a developer's real .env.\n\nReturns:\n    A populated, frozen Settings instance with all paths resolved to absolute pathlib.Path objects.\n\nRaises:\n    ValueError: If STEAM_ANALYST_DB_PATH or STEAM_ANALYST_PARAMETERS_PATH resolve to a value that is not a valid path string, or if http_timeout_seconds (from STEAM_ANALYST_HTTP_TIMEOUT_SECONDS, default '30') cannot be parsed as a positive float.\n",
+  "preconditions": [
+    "If env_path is given, the caller is responsible for it existing; a missing env_path file is not an error (dotenv silently no-ops), consistent with .env being optional in production"
+  ],
+  "postconditions": [
+    "Settings.db_path and Settings.parameters_path are absolute paths regardless of whether the corresponding environment variable was relative",
+    "Settings.steam_web_api_key is None whenever the environment variable is unset or set to an empty string"
+  ],
+  "edge_cases": [
+    {"input": "env_path=None and no .env file discoverable anywhere", "expected_behavior": "falls back to process environment / documented defaults; does not raise"},
+    {"input": "STEAM_ANALYST_HTTP_TIMEOUT_SECONDS='not-a-number'", "expected_behavior": "raises ValueError naming the offending variable"},
+    {"input": "STEAM_WEB_API_KEY=''", "expected_behavior": "Settings.steam_web_api_key is None"},
+    {"input": "db_path environment variable given as './data/analyses.db' (relative)", "expected_behavior": "resolved against the current working directory into an absolute Path"}
+  ],
+  "unit_tests": [
+    {"name": "test_load_settings_from_fixture_env_file", "description": "A fixture .env with all variables set produces a Settings instance with matching, absolute-path fields.", "inputs": {"env_path": "tests/fixtures/env_complete"}, "expected": "Settings(db_path=<absolute Path>, steam_web_api_key='fixture-key', ...)"},
+    {"name": "test_missing_api_key_is_not_fatal", "description": "A fixture .env without STEAM_WEB_API_KEY still returns a Settings instance, with steam_web_api_key=None.", "inputs": {"env_path": "tests/fixtures/env_no_key"}, "expected": "Settings.steam_web_api_key is None"},
+    {"name": "test_invalid_timeout_raises", "description": "A malformed timeout value raises ValueError.", "inputs": {"env_path": "tests/fixtures/env_bad_timeout"}, "expected": "ValueError"}
+  ],
+  "dependencies": ["Settings"]
+}

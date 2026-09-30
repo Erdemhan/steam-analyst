@@ -1,0 +1,21 @@
+{
+  "module": "enrichment",
+  "function_name": "EnrichmentError",
+  "file_path": "src/steam_analyst/enrichment/errors.py",
+  "description": "Raised for stage-fatal enrichment failures: unknown run_id, missing prerequisite raw data, or an internal config-drift condition (e.g. estimate_sales encountering a genre_bucket value with no multiplier entry).",
+  "signature": "class EnrichmentError(Exception): ...",
+  "docstring": "Stage-fatal enrichment failure.\n\nRaised by parse_raw_bundle (unknown run_id), run_enrichment (missing steamspy_all rows), and estimate_sales (a genre_bucket value absent from boxleiter_multipliers, which should be structurally impossible if map_genre_bucket and config validation are both correct, but is guarded defensively as a programmer/config-drift signal). NOT raised for ordinary per-row data-quality issues (missing features, non-game app_type, F2P revenue) -- those are handled via imputation, dropping-and-counting, or NaN, per the module's core design.\n",
+  "preconditions": [],
+  "postconditions": [
+    "An EnrichmentError propagating out of run_enrichment results in the run's status being set to 'failed' via orchestration's exception-to-terminal-status translation"
+  ],
+  "edge_cases": [
+    {"input": "run_enrichment called for a run with zero raw_games rows entirely", "expected_behavior": "EnrichmentError, not a silently-empty successful report"},
+    {"input": "A genre_bucket value structurally impossible under current code but hypothetically produced by a future bug", "expected_behavior": "EnrichmentError rather than an unguarded KeyError leaking a raw dict-lookup traceback"}
+  ],
+  "unit_tests": [
+    {"name": "test_missing_raw_data_raises", "description": "run_enrichment on a run_id with no raw_games rows raises EnrichmentError.", "inputs": {}, "expected": "EnrichmentError"},
+    {"name": "test_str_message_is_informative", "description": "str(EnrichmentError('no steamspy_all rows for run X')) contains the run_id.", "inputs": {}, "expected": "message contains the run_id"}
+  ],
+  "dependencies": []
+}

@@ -1,0 +1,23 @@
+{
+  "module": "acquisition",
+  "function_name": "AcquisitionReport",
+  "file_path": "src/steam_analyst/acquisition/funnel.py",
+  "description": "Summary object returned by run_acquisition, also serialized into analysis_results['funnel_report'].",
+  "signature": "@dataclass(frozen=True)\nclass AcquisitionReport:\n    run_id: str\n    catalog_size: int\n    candidate_count: int\n    detail_fetched: int\n    detail_failed: int\n    reviews_fetched: int\n    reviews_failed: int\n    requests_made: int\n    duration_seconds: float\n    funnel: FunnelResult",
+  "docstring": "Outcome of one full acquisition stage run.\n\nAttributes:\n    run_id: The run this report belongs to.\n    catalog_size: Total apps seen in the SteamSpy bulk catalog (FunnelResult.total_input).\n    candidate_count: Survivors of coarse_filter (len(FunnelResult.candidates)).\n    detail_fetched: appdetails fetches that returned success=true.\n    detail_failed: appdetails fetches that returned success=false or a transport error.\n    reviews_fetched: review-summary fetches that succeeded.\n    reviews_failed: review-summary fetches that failed.\n    requests_made: Total HTTP requests issued across all three sources (bulk pages + per-app details + per-app reviews).\n    duration_seconds: Wall-clock time for the whole stage.\n    funnel: The FunnelResult from coarse_filter.\n",
+  "preconditions": [],
+  "postconditions": [
+    "detail_fetched + detail_failed == candidate_count (every candidate is attempted exactly once)",
+    "reviews_fetched + reviews_failed == candidate_count",
+    "duration_seconds >= 0"
+  ],
+  "edge_cases": [
+    {"input": "candidate_count == 0", "expected_behavior": "detail_fetched, detail_failed, reviews_fetched, reviews_failed are all 0; requests_made reflects only the bulk-catalog page requests"},
+    {"input": "Every candidate's appdetails fetch fails", "expected_behavior": "detail_fetched == 0, detail_failed == candidate_count; the stage still completes and returns a report rather than raising, per the invariant that a failed per-app fetch degrades that app, not the run"}
+  ],
+  "unit_tests": [
+    {"name": "test_counts_are_internally_consistent", "description": "For a synthetic 20-app run with 3 failures each on details and reviews, fetched+failed sums match candidate_count for both.", "inputs": {}, "expected": "detail_fetched+detail_failed == 20, reviews_fetched+reviews_failed == 20"},
+    {"name": "test_empty_candidate_set_report", "description": "candidate_count=0 produces all-zero per-app counters.", "inputs": {}, "expected": "detail_fetched==detail_failed==reviews_fetched==reviews_failed==0"}
+  ],
+  "dependencies": ["FunnelResult"]
+}

@@ -1,0 +1,20 @@
+{
+  "module": "acquisition",
+  "function_name": "FunnelResult",
+  "file_path": "src/steam_analyst/acquisition/funnel.py",
+  "description": "Return type of coarse_filter: survivors plus the auditable per-reason rejection tally.",
+  "signature": "@dataclass(frozen=True)\nclass FunnelResult:\n    candidates: pd.DataFrame\n    total_input: int\n    rejected_by_reason: dict[str, int]\n    criteria: CoarseFilterCriteria",
+  "docstring": "Outcome of one coarse_filter application.\n\nAttributes:\n    candidates: Surviving rows, same columns as the input catalog frame.\n    total_input: Row count of the catalog frame before filtering.\n    rejected_by_reason: Maps each rejection reason string to a count; keys always present for every reason in the acquisition module's rejection-reason vocabulary (including publisher_blocklisted), value 0 if that reason excluded nothing.\n    criteria: The exact CoarseFilterCriteria applied, retained for the funnel_report analysis_results entry so a past run's exact band is reconstructable without re-reading parameters.toml.\n",
+  "preconditions": [],
+  "postconditions": [
+    "len(candidates) + sum(rejected_by_reason.values()) == total_input",
+    "candidates.appid has no duplicates"
+  ],
+  "edge_cases": [
+    {"input": "A rejection reason that excluded zero rows in this run", "expected_behavior": "still present in rejected_by_reason with value 0, per coarse_filter's own postcondition, so an overly broad blocklist entry silently removing nothing is still visible rather than absent from the report"}
+  ],
+  "unit_tests": [
+    {"name": "test_counts_are_internally_consistent", "description": "For any FunnelResult produced by coarse_filter's own tests, len(candidates)+sum(rejected_by_reason.values()) equals total_input.", "inputs": {}, "expected": "equality holds"}
+  ],
+  "dependencies": ["CoarseFilterCriteria"]
+}

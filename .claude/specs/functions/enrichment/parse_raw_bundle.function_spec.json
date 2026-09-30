@@ -1,0 +1,24 @@
+{
+  "module": "enrichment",
+  "function_name": "parse_raw_bundle",
+  "file_path": "src/steam_analyst/enrichment/parsing.py",
+  "description": "Streams raw_games for a run via storage.read_raw_payloads and groups payloads per appid across sources into a RawBundle.",
+  "signature": "def parse_raw_bundle(conn: sqlite3.Connection, run_id: str) -> RawBundle",
+  "docstring": "Load and group a run's raw payloads.\n\nArgs:\n    conn: An open storage connection.\n    run_id: The run to load.\n\nReturns:\n    A RawBundle with steamspy, appdetails and reviews dicts populated from storage.read_raw_payloads(conn, run_id, source=...) for the three relevant source values.\n\nRaises:\n    EnrichmentError: If run_id does not exist (storage.get_run returns None).\n",
+  "preconditions": [
+    "run_id exists in runs"
+  ],
+  "postconditions": [
+    "Materializes the full bulk catalog (potentially ~150k entries) into memory as RawBundle.steamspy -- acceptable per design_notes since enrichment is a pure, offline, re-runnable transformation and this is the natural point where the whole candidate universe must be held at once for compute_developer_catalog_size's full-catalog lookup"
+  ],
+  "edge_cases": [
+    {"input": "run_id has zero raw_games rows for one or more sources (e.g. acquisition stage failed before fetching reviews)", "expected_behavior": "the corresponding RawBundle dict is empty, not an error; downstream functions must tolerate missing reviews for some or all appids"},
+    {"input": "run_id does not exist at all", "expected_behavior": "EnrichmentError naming the run_id"}
+  ],
+  "unit_tests": [
+    {"name": "test_parse_raw_bundle_from_fixture_db", "description": "A fixture database with rows for all three sources produces a fully populated RawBundle.", "inputs": {}, "expected": "RawBundle matching the fixture's row counts"},
+    {"name": "test_parse_raw_bundle_missing_source_yields_empty_dict", "description": "A run with no steam_reviews rows produces RawBundle.reviews == {}.", "inputs": {}, "expected": "reviews == {}"},
+    {"name": "test_unknown_run_id_raises", "description": "A nonexistent run_id raises EnrichmentError.", "inputs": {"run_id": "does-not-exist"}, "expected": "EnrichmentError"}
+  ],
+  "dependencies": ["RawBundle", "EnrichmentError"]
+}

@@ -1,0 +1,30 @@
+{
+  "module": "storage",
+  "function_name": "create_run",
+  "file_path": "src/steam_analyst/storage/runs.py",
+  "description": "Inserts a new runs row with status 'pending' and returns the generated run_id.",
+  "signature": "def create_run(conn: sqlite3.Connection, *, config: dict, parameters_version: str, trigger_type: str = 'manual', parent_run_id: str | None = None, code_version: str | None = None, notes: str | None = None) -> str",
+  "docstring": "Create a new run.\n\nArgs:\n    conn: An open connection.\n    config: JSON-serializable dict of orchestration.PipelineConfig.to_dict() -- the run-specific choices that are NOT FORMULATION.md-governed (start_stage, max_catalog_pages, request_budget_override, notes). Does not duplicate AcquisitionConfig/EnrichmentParams/AnalysisParams: those are reconstructable from parameters_version plus the git-tracked config/parameters.toml at that version. This is also why create_run can run before config.load_parameters -- config here needs no parsed parameter dataclass to exist yet, only a PipelineConfig, which never depends on FORMULATION.md.\n    parameters_version: Output of config.parameters_version(...), a content hash computed directly from the parameters.toml file bytes -- deliberately cheap enough to not require load_parameters to have succeeded, so create_run can be the very first preflight step even ahead of parameter validation.\n    trigger_type: 'manual' or 'scheduled'. Only 'manual' is used in v1; 'scheduled' is reserved (ARCHITECTURE.md forward-compatibility note).\n    parent_run_id: Reserved for future incremental re-crawls; None in v1.\n    code_version: Optional identifier (e.g. a short git hash) of the running code.\n    notes: Optional free user text, stored verbatim in the runs.notes column.\n\nReturns:\n    The generated run_id: a UTC-timestamp-prefixed, lexicographically sortable, human-readable string (e.g. '20260920T143012Z-a1b2c3'), guaranteed unique within this database.\n\nRaises:\n    StorageError: If config is not JSON-serializable, or trigger_type is not one of the two allowed values, or parent_run_id references a run_id that does not exist in runs.\n",
+  "preconditions": [
+    "trigger_type in {'manual', 'scheduled'}",
+    "config is a JSON-serializable dict",
+    "parent_run_id is None or already present in runs"
+  ],
+  "postconditions": [
+    "get_run(conn, returned_run_id).status == 'pending'",
+    "Two calls to create_run in the same process never return the same run_id, even within the same second, due to the random suffix",
+    "run_id values are lexicographically sortable by creation time"
+  ],
+  "edge_cases": [
+    {"input": "config containing a non-JSON-serializable value (e.g. a Path object left un-stringified)", "expected_behavior": "StorageError naming the offending key, raised before any row is written"},
+    {"input": "parent_run_id referencing a nonexistent run_id", "expected_behavior": "StorageError (would otherwise violate the foreign key silently succeed if foreign_keys were off; foreign_keys=ON per ADR-001 makes sqlite3 raise IntegrityError, wrapped as StorageError)"},
+    {"input": "Two create_run calls issued within the same microsecond from two threads on two separate connections", "expected_behavior": "both succeed with distinct run_ids (random suffix collision probability treated as negligible; a retry-on-collision loop is used defensively)"}
+  ],
+  "unit_tests": [
+    {"name": "test_create_run_returns_sortable_ids", "description": "Two sequential calls produce run_ids where the second sorts after the first.", "inputs": {}, "expected": "run_id_2 > run_id_1 lexicographically"},
+    {"name": "test_create_run_roundtrips_through_get_run", "description": "All fields passed to create_run are readable back unchanged via get_run.", "inputs": {"config": {"k": "v"}, "parameters_version": "abc123"}, "expected": "RunRecord with matching config, parameters_version, status='pending'"},
+    {"name": "test_invalid_trigger_type_raises", "description": "trigger_type='cron' raises StorageError.", "inputs": {"trigger_type": "cron"}, "expected": "StorageError"},
+    {"name": "test_unknown_parent_run_id_raises", "description": "A nonexistent parent_run_id raises StorageError.", "inputs": {"parent_run_id": "does-not-exist"}, "expected": "StorageError"}
+  ],
+  "dependencies": ["get_connection"]
+}

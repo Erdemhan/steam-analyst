@@ -1,0 +1,30 @@
+{
+  "module": "enrichment",
+  "function_name": "normalize_features",
+  "file_path": "src/steam_analyst/enrichment/parsing.py",
+  "description": "Flattens a RawBundle into the base (pre-derived-score) feature frame: identity, price, review counts, owners band, size, achievement/language/platform/DLC counts, early-access fields, deck compatibility, genres, categories. Records which fields were absent per row.",
+  "signature": "def normalize_features(bundle: RawBundle) -> pd.DataFrame",
+  "docstring": "Build the base feature frame from raw payloads.\n\nArgs:\n    bundle: Output of parse_raw_bundle.\n\nReturns:\n    A DataFrame indexed by appid with columns: name, developer, publisher, release_date (raw string, unparsed), release_date_parsed (date or NaT), price_usd, is_free, review_count, review_positive_pct, owners_estimate_low/mid/high, size_bytes, achievement_count, language_count, platform_count, dlc_count, is_early_access, early_access_days, deck_compat, genres_json, categories_json, app_type, missing_fields_json (a per-row JSON list of feature names that were absent from the source payload and therefore not yet imputed -- imputation itself happens later, in compute_complexity_score / impute_missing_at_median, not here).\n\nSource precedence for review_count (per the module's own invariant): the Steam reviews endpoint value is used when appdetails/reviews succeeded; SteamSpy's review-derived figure (positive+negative) is used only as a fallback when the reviews fetch failed or is absent for that appid. The column review_count_source ('steam_reviews' | 'steamspy_fallback') records which was used.\n\nRows whose app_type (from appdetails.data.type) is not 'game' are still included in the returned frame but flagged via a boolean is_game column set to False; dropping them is build_enriched_frame's responsibility (so the dropped-row tally can be counted at the composition level), not normalize_features'.\n",
+  "preconditions": [
+    "bundle.steamspy is non-empty for at least the appids also present in appdetails (should always hold by RawBundle's own postcondition)"
+  ],
+  "postconditions": [
+    "One row per appid present in bundle.steamspy (the full candidate-adjacent universe, not just successfully detailed apps), so density/competition-relevant counts are not silently lost for an appid whose detail fetch failed",
+    "review_positive_pct is in [0, 1] or NaN, never a raw percentage-as-integer (e.g. 87 instead of 0.87)",
+    "size_bytes, achievement_count, language_count, platform_count, dlc_count are non-negative integers or NaN, never negative"
+  ],
+  "edge_cases": [
+    {"input": "appdetails payload has success=false for an appid", "expected_behavior": "is_game=False, most derived columns NaN/None, appid retained in the frame with whatever SteamSpy bulk fields are available"},
+    {"input": "reviews missing for an appid whose appdetails succeeded", "expected_behavior": "review_count falls back to the SteamSpy-derived positive+negative sum, review_count_source='steamspy_fallback'"},
+    {"input": "review_positive_pct sourced from Steam reviews reports as an integer percentage like 87 in some payload variants", "expected_behavior": "normalized to 0.87 (divided by 100 when detected as > 1)"},
+    {"input": "categories/genres missing entirely from appdetails", "expected_behavior": "genres_json/categories_json become '[]', not null, so downstream json.loads never fails"},
+    {"input": "size_bytes reported as a string in the payload (observed SteamSpy/Steam API inconsistency)", "expected_behavior": "coerced to int; a non-numeric string becomes NaN and is recorded in missing_fields_json"}
+  ],
+  "unit_tests": [
+    {"name": "test_normalize_features_success_path", "description": "A fixture bundle with fully successful appdetails/reviews produces a fully populated row with correct dtypes.", "inputs": {}, "expected": "row matching hand-computed expected values"},
+    {"name": "test_normalize_features_appdetails_failure", "description": "success=false yields is_game=False and NaN derived columns, row still present.", "inputs": {}, "expected": "is_game == False, appid retained"},
+    {"name": "test_review_count_fallback_to_steamspy", "description": "A missing reviews entry falls back to SteamSpy positive+negative with review_count_source='steamspy_fallback'.", "inputs": {}, "expected": "review_count == positive+negative, review_count_source == 'steamspy_fallback'"},
+    {"name": "test_review_positive_pct_normalized_to_ratio", "description": "An integer-percentage input of 87 is normalized to 0.87.", "inputs": {}, "expected": 0.87}
+  ],
+  "dependencies": ["RawBundle"]
+}

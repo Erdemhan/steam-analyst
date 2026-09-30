@@ -1,0 +1,25 @@
+{
+  "module": "ui",
+  "function_name": "render_caveat_panel",
+  "file_path": "src/steam_analyst/ui/pages.py",
+  "description": "The one shared rendering of a caveat list, so every page that shows a sales/revenue/complexity figure renders caveats identically rather than each page re-implementing its own formatting.",
+  "signature": "def render_caveat_panel(caveats: Sequence[Caveat]) -> None",
+  "docstring": "Render a fixed expander listing every caveat.\n\nArgs:\n    caveats: Typically reporting.interpretive_caveats() plus, when applicable, reporting.partial_run_caveat(...) and the 'archetype_cap_relaxed' caveat already appended by reporting.load_run_report -- this function does not itself call reporting, it only renders whatever list it is given.\n\nBehavior:\n    - An st.expander (collapsed by default, so it does not dominate the page, but always present and always labeled clearly, e.g. 'Methodology notes and limitations (N)').\n    - Each Caveat rendered with its title, body, and a visual marker for severity ('info' vs 'warning' vs 'error', the last only ever appearing via a failed run's partial_run_caveat).\n    - Order: caveats are rendered in the order given, not re-sorted -- callers control ordering (e.g. load_run_report puts the dynamic partial/relaxation caveats first, then the fixed interpretive_caveats list).\n",
+  "preconditions": [],
+  "postconditions": [
+    "Every element of caveats is rendered; none are silently dropped",
+    "severity is visually distinguishable (e.g. color or icon differs across 'info', 'warning', 'error')"
+  ],
+  "edge_cases": [
+    {"input": "caveats is empty (should not normally happen -- interpretive_caveats() always returns the fixed 7-item list -- but defensively)", "expected_behavior": "renders an empty expander rather than raising or omitting the expander entirely, so the panel's presence itself stays a reliable, testable invariant across every page"},
+    {"input": "A Caveat with severity outside {'info','warning','error'} (should not occur given reporting's own contract)", "expected_behavior": "rendered with a default/neutral visual treatment rather than raising -- this function trusts but does not re-validate reporting's own severity contract"},
+    {"input": "Called twice on the same page (should not happen per this page's own design, but defensively)", "expected_behavior": "renders two independent expanders; no shared state between calls"}
+  ],
+  "unit_tests": [
+    {"name": "test_all_caveats_rendered", "description": "A list of 7 caveats results in 7 rendered entries inside the expander.", "inputs": {"caveats": "7 fixture Caveat objects"}, "expected": "7 entries present"},
+    {"name": "test_severity_visually_distinguished", "description": "An 'error' severity caveat renders with a different marker than an 'info' one.", "inputs": {}, "expected": "distinct rendering per severity"},
+    {"name": "test_order_preserved", "description": "Caveats render in the exact order passed in, not resorted.", "inputs": {"caveats": "[Caveat(key='b'), Caveat(key='a')]"}, "expected": "'b' rendered before 'a'"},
+    {"name": "test_empty_list_still_renders_expander", "description": "An empty caveats list still renders the expander container.", "inputs": {"caveats": []}, "expected": "expander present, zero entries inside"}
+  ],
+  "dependencies": ["reporting.Caveat"]
+}

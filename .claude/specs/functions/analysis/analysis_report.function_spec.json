@@ -1,0 +1,22 @@
+{
+  "module": "analysis",
+  "function_name": "AnalysisReport",
+  "file_path": "src/steam_analyst/analysis/pipeline.py",
+  "description": "Summary object returned by run_analysis.",
+  "signature": "@dataclass(frozen=True)\nclass AnalysisReport:\n    run_id: str\n    candidates_in: int\n    simple_subset_size: int\n    rejected_by_reason: dict[str, int]\n    cluster_count: int\n    scored_cluster_count: int\n    clusters_below_min_size: int\n    duration_seconds: float",
+  "docstring": "Outcome of one analysis stage run.\n\nAttributes:\n    candidates_in: len(games_enriched) for the run.\n    simple_subset_size: len(apply_simplicity_filter's buildable output).\n    rejected_by_reason: apply_simplicity_filter's tally, merged with any release-date-unparseable exclusions from the trend/density computations.\n    cluster_count: Total distinct clusters produced by cluster_tags, scored or not.\n    scored_cluster_count: Clusters present in the final opportunity_matrix (n_games >= min_cluster_size).\n    clusters_below_min_size: cluster_count - scored_cluster_count.\n    duration_seconds: Wall-clock stage time.\n",
+  "preconditions": [],
+  "postconditions": [
+    "scored_cluster_count + clusters_below_min_size == cluster_count",
+    "simple_subset_size <= candidates_in"
+  ],
+  "edge_cases": [
+    {"input": "Empty candidate set", "expected_behavior": "all counts are 0, no exception"},
+    {"input": "Every cluster clears min_cluster_size", "expected_behavior": "clusters_below_min_size == 0, scored_cluster_count == cluster_count"}
+  ],
+  "unit_tests": [
+    {"name": "test_counts_internally_consistent", "description": "For a synthetic fixture, scored_cluster_count + clusters_below_min_size == cluster_count.", "inputs": {}, "expected": "equality holds"},
+    {"name": "test_empty_candidate_set_all_zero", "description": "An empty run produces an all-zero report.", "inputs": {}, "expected": "every count is 0"}
+  ],
+  "dependencies": []
+}

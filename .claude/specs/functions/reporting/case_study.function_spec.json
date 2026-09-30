@@ -1,0 +1,22 @@
+{
+  "module": "reporting",
+  "function_name": "CaseStudy",
+  "file_path": "src/steam_analyst/reporting/case_studies.py",
+  "description": "One row of the case-study list: a specific game presented as a plausibly-small-scope, commercially-notable example within its archetype.",
+  "signature": "@dataclass(frozen=True)\nclass CaseStudy:\n    appid: int\n    name: str\n    developer: str\n    release_date: str\n    price_usd: float\n    review_count: int\n    review_positive_pct: float\n    estimated_sales_band: tuple[float, float, float]\n    estimated_revenue_net_usd: float\n    complexity_score: float\n    top_tags: list[str]\n    archetype_label: str\n    rationale: str\n    complexity_drivers: list[tuple[str, float]]\n    store_url: str",
+  "docstring": "One case-study entry.\n\nAttributes:\n    estimated_sales_band: (low, mid, high) from games_enriched.\n    estimated_revenue_net_usd: May be NaN for a free-to-play case study; the UI must render NaN as an explicit 'unknown' marker per reporting's own invariant, never as $0.\n    complexity_score: The game's own score, in [0, 1].\n    top_tags: Top few tags by vote, from game_tags.\n    archetype_label: cluster_tags' label for this game's assigned cluster.\n    rationale: build_rationale's output for this row.\n    complexity_drivers: enrichment.compute_complexity_score's per-feature contributions for this row, top few by magnitude, e.g. [('install_size', 0.15), ('achievement_count', 0.08)], powering an explainability breakdown in the UI.\n    store_url: Constructed as f'https://store.steampowered.com/app/{appid}/' -- a display convenience, not a fetched value.\n",
+  "preconditions": [],
+  "postconditions": [
+    "estimated_sales_band is non-decreasing: band[0] <= band[1] <= band[2]",
+    "rationale never asserts an unhedged development-time or cost claim (verified against a forbidden-phrase list by reporting's own tests, per the module's own testing requirement)"
+  ],
+  "edge_cases": [
+    {"input": "A free-to-play case study", "expected_behavior": "estimated_revenue_net_usd is NaN (or None as constructed); the UI layer, not this dataclass, is responsible for rendering the unavailable marker, but the dataclass itself must not coerce NaN to 0.0 at construction time"},
+    {"input": "A game with fewer than 3 retained tags", "expected_behavior": "top_tags has fewer than 3 entries rather than being padded with placeholders"}
+  ],
+  "unit_tests": [
+    {"name": "test_sales_band_ordering", "description": "A constructed CaseStudy from fixture data has band[0] <= band[1] <= band[2].", "inputs": {}, "expected": "ordering holds"},
+    {"name": "test_free_to_play_revenue_not_coerced_to_zero", "description": "A F2P fixture case study has estimated_revenue_net_usd as NaN/None, not 0.0.", "inputs": {}, "expected": "NaN or None, not 0.0"}
+  ],
+  "dependencies": ["build_rationale"]
+}

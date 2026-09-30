@@ -1,0 +1,30 @@
+{
+  "module": "storage",
+  "function_name": "read_enriched",
+  "file_path": "src/steam_analyst/storage/enriched.py",
+  "description": "Reads games_enriched rows for a run, optionally projecting a column subset and filtering with a raw SQL WHERE fragment for analysis-stage queries.",
+  "signature": "def read_enriched(conn: sqlite3.Connection, run_id: str, *, columns: Sequence[str] | None = None, where: str | None = None) -> pd.DataFrame",
+  "docstring": "Read enriched rows for a run.\n\nArgs:\n    conn: An open connection.\n    run_id: The run to read.\n    columns: Column subset to select; None selects all columns.\n    where: An optional raw SQL boolean expression (column references only, e.g. \"complexity_score IS NOT NULL\") appended after `WHERE run_id = ?`. Not a general-purpose SQL injection surface for external input -- callers are internal modules (analysis, reporting) passing static, code-authored fragments, never end-user strings.\n\nReturns:\n    A DataFrame with SQL NULL mapped to pandas NA/NaN (numpy.nan for floats, pandas.NA or None for object/string columns), one row per matching game.\n",
+  "preconditions": [
+    "columns, if given, are all valid games_enriched column names",
+    "where, if given, references only existing column names and is a boolean SQL expression"
+  ],
+  "postconditions": [
+    "Returned DataFrame's column order matches the requested `columns` order when given, or the schema's natural column order otherwise",
+    "SQL NULL becomes NaN/None, never 0 or an empty string",
+    "Returns an empty (but correctly columned) DataFrame for a run_id with no enriched rows"
+  ],
+  "edge_cases": [
+    {"input": "columns=['appid', 'does_not_exist']", "expected_behavior": "StorageError naming the unknown column, raised before querying"},
+    {"input": "where=\"complexity_score < 0.4\"", "expected_behavior": "returns only rows satisfying the expression, correctly combined with the run_id filter via AND"},
+    {"input": "run_id has zero enriched rows (enrichment has not run yet)", "expected_behavior": "empty DataFrame with the requested/full column set, not an exception"},
+    {"input": "where references a column not in columns' projection", "expected_behavior": "allowed -- filtering columns need not be part of the projected output"}
+  ],
+  "unit_tests": [
+    {"name": "test_read_all_columns_default", "description": "columns=None returns every games_enriched column.", "inputs": {}, "expected": "DataFrame with the full schema column set"},
+    {"name": "test_read_projected_columns", "description": "columns=['appid','complexity_score'] returns exactly those two columns.", "inputs": {"columns": ["appid", "complexity_score"]}, "expected": "DataFrame with exactly those two columns, in that order"},
+    {"name": "test_where_filters_rows", "description": "where clause restricts the returned rows correctly.", "inputs": {"where": "complexity_score < 0.4"}, "expected": "only rows with complexity_score < 0.4"},
+    {"name": "test_unknown_column_raises", "description": "An unknown column name in `columns` raises StorageError.", "inputs": {"columns": ["not_a_real_column"]}, "expected": "StorageError"}
+  ],
+  "dependencies": []
+}

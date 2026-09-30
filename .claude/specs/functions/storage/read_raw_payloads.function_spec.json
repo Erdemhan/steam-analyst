@@ -1,0 +1,26 @@
+{
+  "module": "storage",
+  "function_name": "read_raw_payloads",
+  "file_path": "src/steam_analyst/storage/raw.py",
+  "description": "Streams raw_games rows for a run and source without materializing the whole result set in memory, since a run's bulk catalog snapshot can be on the order of 150k rows.",
+  "signature": "def read_raw_payloads(conn: sqlite3.Connection, run_id: str, source: str) -> Iterator[RawPayload]",
+  "docstring": "Stream raw payloads for one source.\n\nArgs:\n    conn: An open connection.\n    run_id: The run to read.\n    source: One of 'steamspy_all','steamspy_appdetails','steam_appdetails','steam_reviews'.\n\nYields:\n    RawPayload instances, one per matching row, in an unspecified but stable-for-a-given-run order (typically appid ascending, via the idx_raw_games_run_source index).\n\nRaises:\n    StorageError: If source is not one of the four allowed values.\n",
+  "preconditions": [
+    "source in {'steamspy_all','steamspy_appdetails','steam_appdetails','steam_reviews'}"
+  ],
+  "postconditions": [
+    "The underlying cursor is consumed incrementally (server-side cursor / fetchmany batches), so peak memory does not scale with the full 150k-row bulk snapshot",
+    "Yields zero items, not an error, for a run/source combination with no rows"
+  ],
+  "edge_cases": [
+    {"input": "run_id/source combination with zero rows", "expected_behavior": "yields nothing; the iterator is simply empty"},
+    {"input": "source not one of the four allowed values", "expected_behavior": "StorageError raised immediately (before any iteration), not lazily on first next()"},
+    {"input": "Caller only consumes the first few items and abandons the iterator", "expected_behavior": "no resource leak; the underlying cursor is closed via a context manager / generator cleanup (try/finally)"}
+  ],
+  "unit_tests": [
+    {"name": "test_streams_all_matching_rows", "description": "A fixture with 3 steamspy_all rows and 2 steam_appdetails rows for the run yields exactly the 3 matching rows when source='steamspy_all'.", "inputs": {"source": "steamspy_all"}, "expected": "3 RawPayload instances"},
+    {"name": "test_empty_result_yields_nothing", "description": "A source with no rows yields an empty iterator.", "inputs": {"source": "steam_reviews"}, "expected": "[]"},
+    {"name": "test_invalid_source_raises_immediately", "description": "An invalid source string raises StorageError before iteration begins.", "inputs": {"source": "steamdb_scrape"}, "expected": "StorageError"}
+  ],
+  "dependencies": []
+}

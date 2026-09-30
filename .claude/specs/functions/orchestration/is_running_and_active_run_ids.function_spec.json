@@ -1,0 +1,24 @@
+{
+  "module": "orchestration",
+  "function_name": "is_running and active_run_ids",
+  "file_path": "src/steam_analyst/orchestration/runner.py",
+  "description": "Bundled type-spec for the two trivial, logic-free read-only queries over _CANCEL_REGISTRY. Grouped in one file since both are single-line lock-guarded lookups with no independent branching worth documenting separately.",
+  "signature": "def is_running(run_id: str) -> bool: ...\n\ndef active_run_ids() -> list[str]: ...",
+  "docstring": "is_running: True iff run_id has a live worker registered in this process right now (i.e. is a key in _CANCEL_REGISTRY). Used by the UI to decide whether to show Cancel vs Resume for a given run, and by resume_run to reject a resume against an already-running run.\n\nactive_run_ids: All run_ids with a live worker in this process, in no particular order. Used by the UI's 'Start disabled while a run is active' rule (ADR-001 supports only one writer) and by reconcile_orphaned_runs to know which 'running'-status rows in the database are NOT actually orphaned.\n\nBoth read _CANCEL_REGISTRY under its lock and return a plain snapshot; neither blocks on anything beyond acquiring that lock briefly.\n",
+  "preconditions": [],
+  "postconditions": [
+    "is_running(run_id) == (run_id in active_run_ids()) for every run_id, always",
+    "The returned list from active_run_ids() is a snapshot; mutating it does not affect the registry"
+  ],
+  "edge_cases": [
+    {"input": "No run has ever been started in this process", "expected_behavior": "active_run_ids() returns []; is_running(anything) returns False"},
+    {"input": "Called concurrently with a worker's finally block removing its own entry", "expected_behavior": "returns either the pre- or post-removal snapshot, never a torn/partial read, since access is lock-guarded"}
+  ],
+  "unit_tests": [
+    {"name": "test_is_running_true_for_registered_run", "description": "After start_pipeline_async registers a run, is_running returns True for it.", "inputs": {}, "expected": true},
+    {"name": "test_is_running_false_for_unregistered_run", "description": "An unstarted or finished run_id returns False.", "inputs": {"run_id": "unknown"}, "expected": false},
+    {"name": "test_active_run_ids_reflects_registry_snapshot", "description": "With two live workers registered, active_run_ids() returns both ids and no others.", "inputs": {}, "expected": "a list containing exactly the two registered run_ids"},
+    {"name": "test_consistency_between_both_functions", "description": "For a set of run_ids in mixed states, is_running(rid) matches (rid in active_run_ids()) for every rid.", "inputs": {}, "expected": "consistent for all"}
+  ],
+  "dependencies": []
+}

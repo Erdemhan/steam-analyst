@@ -1,0 +1,22 @@
+{
+  "module": "analysis",
+  "function_name": "TagClusterResult",
+  "file_path": "src/steam_analyst/analysis/clustering.py",
+  "description": "Return type of cluster_tags.",
+  "signature": "@dataclass(frozen=True)\nclass TagClusterResult:\n    assignments: pd.DataFrame\n    cluster_labels: dict[int, str]\n    cluster_members: dict[int, list[str]]\n    cooccurrence: pd.DataFrame\n    method: str\n    params_used: dict",
+  "docstring": "Outcome of one cluster_tags call.\n\nAttributes:\n    assignments: A DataFrame with columns appid, cluster_id -- one row per game that had at least one retained tag, per the module's own edge case 'Games carrying no tags at all -> excluded from clustering'. A game whose tags span multiple clusters is assigned to the cluster its PLURALITY of tags belongs to (ties broken by lowest cluster_id, for determinism).\n    cluster_labels: cluster_id -> label string from label_cluster.\n    cluster_members: cluster_id -> list of tag strings belonging to that cluster.\n    cooccurrence: The raw tag-by-tag co-occurrence count matrix (not the Jaccard distance matrix) used for labeling and available for reporting/debugging.\n    method: Fixed string 'agglomerative_jaccard_no_genre_anchor', recorded for traceability into analysis_results['tag_clusters'] since the method itself is locked but implementation details (linkage, threshold) may still evolve.\n    params_used: {'linkage': ..., 'distance_threshold': ..., 'threshold_source': 'frozen' | 'run_local_search'} -- records whether AnalysisParams.tag_distance_threshold was used verbatim (frozen) or derived fresh by this run's own search (run_local_search, only possible pre-freeze).\n",
+  "preconditions": [],
+  "postconditions": [
+    "Every appid in assignments has a cluster_id present as a key in both cluster_labels and cluster_members",
+    "cluster_members' lists partition the set of tags that survived filtering (every retained tag belongs to exactly one cluster)"
+  ],
+  "edge_cases": [
+    {"input": "A game with tags split evenly across two clusters (plurality tie)", "expected_behavior": "assigned to the lower-numbered cluster_id, deterministically"},
+    {"input": "Zero games have any retained tags at all", "expected_behavior": "assignments is an empty DataFrame with the correct columns; cluster_labels/cluster_members are empty dicts"}
+  ],
+  "unit_tests": [
+    {"name": "test_every_assigned_game_has_valid_cluster_id", "description": "For a synthetic fixture, every cluster_id in assignments is a key in cluster_labels.", "inputs": {}, "expected": "no orphaned cluster_id"},
+    {"name": "test_plurality_tie_broken_by_lowest_id", "description": "A game with tags evenly split between cluster 2 and cluster 5 is assigned to cluster 2.", "inputs": {}, "expected": "cluster_id == 2"}
+  ],
+  "dependencies": ["label_cluster"]
+}

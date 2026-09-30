@@ -1,0 +1,25 @@
+{
+  "module": "scripts",
+  "function_name": "compute_frozen_bounds",
+  "file_path": "scripts/freeze_empirical_parameters.py",
+  "description": "ADR-012's core computation: reads a completed run's games_enriched (and game_tags) data and computes the empirical complexity-score normalization bounds and the tag-clustering distance-cut threshold that FORMULATION.md sections 4 and 6 lock as 'derived empirically from the first completed run'. NOT one of the 91 module functions -- this script is a thin library consumer of storage/enrichment/analysis, run by hand once run 1 completes.",
+  "signature": "def compute_frozen_bounds(conn: sqlite3.Connection, run_id: str, params: AnalysisParams) -> FrozenBounds",
+  "docstring": "Compute empirically-frozen parameter values from a completed run.\n\nArgs:\n    conn: An open storage connection.\n    run_id: The run whose data will fix the bounds (must be status='succeeded').\n    params: The run's AnalysisParams (needed for min_cluster_size and clustering_linkage when re-deriving the distance threshold with a full, non-run-local search).\n\nReturns:\n    FrozenBounds(complexity_bounds: dict[str, tuple[float, float]], tag_distance_threshold: float, tag_distance_search_stats: dict) -- complexity_bounds gives (a, b) = (5th percentile, 95th percentile) of log10(x+1) for each of the six log-scaled features in FORMULATION.md section 4's table, computed over the run's own candidate population (raw feature values re-read via storage.read_enriched, NOT re-derived from raw_games). tag_distance_threshold is recomputed via the SAME search procedure as analysis.cluster_tags' pre-freeze fallback (see that function's own flagged judgment call on linkage/search method), but run once, deliberately, as the authoritative freeze rather than an in-pipeline fallback.\n\nAMBIGUITY FLAGGED TO USER: this function's tag_distance_threshold computation depends entirely on analysis.cluster_tags' own unresolved judgment call (linkage criterion, exact threshold-search rule) -- FORMULATION.md section 6 gives only a qualitative goal ('keep median cluster size in a reasonable range... tuned so at least half of clusters clear the minimum-cluster-size rule'), not an algorithm. Until that judgment call in analysis.cluster_tags is confirmed, this function's output for tag_distance_threshold is provisional by construction, not merely by data.\n\nRaises:\n    ValueError: If the run's status is not 'succeeded', or games_enriched has too few rows (fewer than, e.g., 30) to compute a stable 5th/95th percentile.\n",
+  "preconditions": [
+    "storage.get_run(conn, run_id).status == 'succeeded'",
+    "games_enriched for run_id has enough rows for percentile stability"
+  ],
+  "postconditions": [
+    "For every feature, a < b strictly (a degenerate a==b bound, e.g. from a near-constant feature across the whole candidate set, must raise rather than silently producing an unusable bound pair, since normalize_feature_log_scaled itself would then raise at use time)"
+  ],
+  "edge_cases": [
+    {"input": "A feature that is constant (zero variance) across the whole run 1 candidate set", "expected_behavior": "5th and 95th percentile are equal; raises ValueError naming the feature, since a degenerate bound pair cannot be frozen usefully -- a human must decide (widen manually, or use a different run) rather than this script silently producing an unusable config"},
+    {"input": "run_id has status='failed' or 'running'", "expected_behavior": "ValueError -- only a fully succeeded run's data is authoritative enough to freeze against"}
+  ],
+  "unit_tests": [
+    {"name": "test_computes_percentile_bounds_matching_hand_computation", "description": "A synthetic games_enriched fixture with known feature distributions produces 5th/95th percentile bounds matching a hand computation.", "inputs": {}, "expected": "bounds match numpy.percentile(..., [5, 95]) on the same data"},
+    {"name": "test_degenerate_feature_raises", "description": "A feature with identical values across every row raises ValueError.", "inputs": {}, "expected": "ValueError"},
+    {"name": "test_non_succeeded_run_raises", "description": "A run with status='running' raises ValueError.", "inputs": {}, "expected": "ValueError"}
+  ],
+  "dependencies": ["storage.read_enriched", "storage.read_tags", "analysis.compute_jaccard_tag_distance"]
+}

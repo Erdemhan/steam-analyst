@@ -1,0 +1,24 @@
+{
+  "module": "scripts",
+  "function_name": "format_formulation_snippet",
+  "file_path": "scripts/freeze_empirical_parameters.py",
+  "description": "Formats the exact text for a human to paste into FORMULATION.md sections 4 and 6 (the prose record) AND section 8 (the machine-readable toml block), per ADR-012's explicit human-checkpoint design. Since FORMULATION.md §8 became the source scripts.verify_parameters_consistency actually parses, this function's output must update BOTH the human-readable record and the toml block, or the two would immediately drift from each other the moment a human pastes only one.",
+  "signature": "@dataclass(frozen=True)\nclass FormulationSnippet:\n    prose_record: str\n    toml_block_update: str\n\ndef format_formulation_snippet(run_id: str, computed_at: date, bounds: FrozenBounds) -> FormulationSnippet",
+  "docstring": "Format paste-ready text for FORMULATION.md, in two parts.\n\nArgs:\n    run_id: The run the values were derived from.\n    computed_at: Date this script was run.\n    bounds: compute_frozen_bounds' output.\n\nReturns:\n    FormulationSnippet(prose_record, toml_block_update) where:\n    - prose_record: Markdown text for sections 4 and 6's own required human-readable record ('The run that fixes them must be recorded here...'), containing run_id, computed_at (ISO date), every feature's (a, b) pair, and the tag_distance_threshold plus its search stats (cluster count, median cluster size).\n    - toml_block_update: the exact replacement lines for FORMULATION.md §8's fenced toml block -- specifically the `# complexity_bounds: unset until...` comment line replaced with a real `[enrichment.complexity_bounds]` table, and the `# tag_distance_threshold: unset until...` comment line replaced with a real `tag_distance_threshold = <value>` key -- so §8 stops describing these two values as 'unset' once a human pastes this in, keeping §8 truthful and keeping scripts.verify_parameters_consistency (which parses §8, not the prose) able to see the newly frozen values.\n\nThis function does NOT edit FORMULATION.md itself (that file is user-locked; ADR-012 requires a human paste step for both parts).\n",
+  "preconditions": [],
+  "postconditions": [
+    "prose_record is valid Markdown containing run_id, computed_at (ISO date), every feature's (a, b) pair, and the tag_distance_threshold plus its search stats",
+    "toml_block_update is valid TOML syntax that, once substituted into §8's fence, leaves the whole fenced block still parseable by scripts.verify_parameters_consistency",
+    "Neither output half references the other's location only by vague description -- both name their exact target ('FORMULATION.md section 4' / 'section 6' / 'section 8's toml block') so a human pasting this cannot misplace either half"
+  ],
+  "edge_cases": [
+    {"input": "bounds.tag_distance_search_stats missing an expected key (e.g. median_cluster_size not computed)", "expected_behavior": "raises KeyError rather than silently omitting a value FORMULATION.md's own template requires -- a human should not paste an incomplete record"}
+  ],
+  "unit_tests": [
+    {"name": "test_snippet_contains_all_required_fields", "description": "A fixture FrozenBounds produces prose_record containing the run_id, date, every feature bound pair, and the threshold with its stats.", "inputs": {}, "expected": "all fields present in prose_record"},
+    {"name": "test_toml_block_update_is_valid_toml", "description": "toml_block_update parses successfully on its own with a standard TOML parser.", "inputs": {}, "expected": "parses without error"},
+    {"name": "test_toml_block_update_no_longer_says_unset", "description": "toml_block_update contains real [enrichment.complexity_bounds] and tag_distance_threshold values, not the 'unset' placeholder comments.", "inputs": {}, "expected": "no 'unset' substring in toml_block_update"},
+    {"name": "test_missing_stats_key_raises", "description": "A FrozenBounds missing median_cluster_size in its search stats raises KeyError.", "inputs": {}, "expected": "KeyError"}
+  ],
+  "dependencies": ["FormulationSnippet"]
+}

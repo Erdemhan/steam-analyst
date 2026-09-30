@@ -1,0 +1,21 @@
+{
+  "module": "ui",
+  "function_name": "SESSION_KEYS",
+  "file_path": "src/steam_analyst/ui/session.py",
+  "description": "The complete, closed set of st.session_state keys this module is allowed to write. Existing precisely so a test can assert no other key is ever written -- an unbounded, ad-hoc set of session-state keys is exactly the kind of implicit state this project's testing discipline is meant to catch early.",
+  "signature": "SESSION_KEYS: Final[tuple[str, ...]] = ('active_run_id', 'last_event_id', 'event_log')",
+  "docstring": "active_run_id (str | None): The run currently being watched by the progress panel. Set by Start (render_new_analysis_page) and by Resume (render_past_analyses_page); not used by render_analysis_detail_page, which addresses its run via st.query_params['run_id'] instead, deliberately, so the detail view stays refresh-safe and linkable independent of session state.\nlast_event_id (int): High-water mark for incremental storage.read_run_events reads. Defaults to 0.\nevent_log (list[RunEvent]): Accumulated events across polls, needed because read_run_events is incremental -- without accumulation, each poll would show only its newest slice and the panel's history would appear to reset every 2 seconds.\n\nNo other key may be written to st.session_state by this module. Widget values are exempt since Streamlit widgets manage their own state by key; the selected run for the detail page is exempt since it lives in st.query_params, not session_state, by design.\n",
+  "preconditions": [],
+  "postconditions": [
+    "Every st.session_state key ever written by ui/pages.py is a member of SESSION_KEYS",
+    "SESSION_KEYS has exactly three entries; adding a fourth requires updating this spec and the test that enforces the closed set"
+  ],
+  "edge_cases": [
+    {"input": "A future page needs a new piece of session-scoped state", "expected_behavior": "SESSION_KEYS must be extended explicitly and the enforcing test updated in the same change -- a key silently added elsewhere is treated as a defect, not a feature, per the ui module's own testing requirement"}
+  ],
+  "unit_tests": [
+    {"name": "test_no_key_outside_session_keys_is_ever_written", "description": "Driving every page via AppTest through a full Start-poll-finish-view cycle, every st.session_state key written is a member of SESSION_KEYS.", "inputs": {}, "expected": "no extraneous key observed"},
+    {"name": "test_exactly_three_keys_declared", "description": "SESSION_KEYS has exactly the three documented entries, no more, no fewer.", "inputs": {}, "expected": "('active_run_id', 'last_event_id', 'event_log')"}
+  ],
+  "dependencies": []
+}

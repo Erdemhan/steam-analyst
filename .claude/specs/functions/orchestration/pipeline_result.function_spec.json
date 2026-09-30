@@ -1,0 +1,24 @@
+{
+  "module": "orchestration",
+  "function_name": "PipelineResult",
+  "file_path": "src/steam_analyst/orchestration/results.py",
+  "description": "run_pipeline's return value on any path that does not raise -- a full run is reported via successful return, not via a report object smuggled out through an exception.",
+  "signature": "@dataclass(frozen=True)\nclass PipelineResult:\n    run_id: str\n    status: str\n    stages_run: list[PipelineStage]\n    acquisition: AcquisitionReport | None\n    enrichment: EnrichmentReport | None\n    analysis: AnalysisReport | None\n    started_at: datetime\n    finished_at: datetime\n    duration_seconds: float\n    error_message: str | None",
+  "docstring": "Outcome of one run_pipeline call.\n\nAttributes:\n    status: The terminal runs.status value written for this call ('succeeded', 'failed' or 'cancelled' -- run_pipeline always ends in one of these three, never 'pending' or 'running').\n    stages_run: The PipelineStage members actually attempted this call, in execution order -- for a resume starting at ENRICHMENT, this excludes ACQUISITION even though the overall run has an acquisition stage from an earlier call.\n    acquisition / enrichment / analysis: The stage's own report object if that stage was attempted and returned normally this call, else None. A None here does not necessarily mean failure -- it may simply mean this call's start_stage skipped it.\n    duration_seconds: Wall-clock time for this call only, not the run's cumulative time across a crash and a resume.\n    error_message: Populated only when status != 'succeeded', formatted per orchestration's fixed '{stage}: {ExceptionType}: {message}' convention.\n",
+  "preconditions": [],
+  "postconditions": [
+    "status == 'succeeded' implies error_message is None and every stage in stages_run has a non-None report",
+    "status != 'succeeded' implies error_message is not None",
+    "finished_at - started_at, in seconds, equals duration_seconds within floating-point tolerance"
+  ],
+  "edge_cases": [
+    {"input": "A resume call starting at ENRICHMENT that succeeds", "expected_behavior": "stages_run == [PipelineStage.ENRICHMENT, PipelineStage.ANALYSIS]; acquisition is None even though the run overall does have acquisition data from the original call"},
+    {"input": "A run cancelled during acquisition, before enrichment ever begins", "expected_behavior": "status='cancelled'; stages_run==[PipelineStage.ACQUISITION]; acquisition is None if the stage entry point never returned normally (it raised PipelineCancelled), even though partial raw_games rows were committed"}
+  ],
+  "unit_tests": [
+    {"name": "test_succeeded_result_has_no_error_message", "description": "A full successful run's PipelineResult has error_message=None and all three reports populated.", "inputs": {}, "expected": "status='succeeded', error_message is None, acquisition/enrichment/analysis all not None"},
+    {"name": "test_failed_result_has_error_message_and_partial_reports", "description": "A run failing in enrichment has acquisition populated, enrichment/analysis None, and a non-None error_message.", "inputs": {}, "expected": "status='failed', acquisition is not None, enrichment is None, error_message is not None"},
+    {"name": "test_duration_matches_timestamps", "description": "duration_seconds equals (finished_at - started_at).total_seconds() within 1e-6.", "inputs": {}, "expected": true}
+  ],
+  "dependencies": ["PipelineStage", "acquisition.AcquisitionReport", "enrichment.EnrichmentReport", "analysis.AnalysisReport"]
+}

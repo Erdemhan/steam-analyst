@@ -1,0 +1,3 @@
+# This TOML file has invalid syntax
+[acquisition
+steamspy_page_delay_seconds = 0.5

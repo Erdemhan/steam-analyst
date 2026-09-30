@@ -1,0 +1,27 @@
+{
+  "module": "enrichment",
+  "function_name": "compute_developer_catalog_size",
+  "file_path": "src/steam_analyst/enrichment/features.py",
+  "description": "Counts other titles by the same developer, counted against the full SteamSpy catalog snapshot, not only the candidate set, so a prolific studio filtered out at stage one does not look like a first-time solo developer.",
+  "signature": "def compute_developer_catalog_size(frame: pd.DataFrame, catalog: pd.DataFrame) -> pd.Series",
+  "docstring": "Compute per-row developer catalog size.\n\nArgs:\n    frame: The (candidate-scoped) normalized feature frame, indexed by appid, with a 'developer' column.\n    catalog: The FULL bulk catalog frame (acquisition.build_catalog_frame's output for the whole run, not just survivors), also with a 'developer' column.\n\nReturns:\n    A pd.Series indexed like frame, giving count of OTHER apps (excluding the row's own appid) in catalog sharing the same developer string (exact, case-sensitive match on the raw developer field as reported -- no fuzzy/alias resolution, since Steam/SteamSpy developer strings are typically consistent for a given studio account).\n",
+  "preconditions": [
+    "catalog contains every appid in frame (frame's candidates are a subset of the full catalog)",
+    "developer column is present in both frame and catalog"
+  ],
+  "postconditions": [
+    "Every value is >= 0",
+    "A developer string of NaN/empty never matches another NaN/empty row as 'the same developer' (two apps both missing a developer field are not counted as sharing a developer)"
+  ],
+  "edge_cases": [
+    {"input": "A developer with only one title in the whole catalog (this row itself)", "expected_behavior": "0"},
+    {"input": "developer is NaN for this row", "expected_behavior": "0 (undefined developer identity cannot be matched to any group, including other NaN rows)"},
+    {"input": "The same developer string appears with different casing across two apps ('Team Cherry' vs 'team cherry')", "expected_behavior": "NOT matched as the same developer in v1 -- exact string match only; documented as a known limitation of this proxy feature, not silently fuzzy-matched, since fuzzy matching could introduce false groupings without a validated similarity method"}
+  ],
+  "unit_tests": [
+    {"name": "test_counts_other_titles_excluding_self", "description": "A developer with 4 total catalog titles produces catalog_size=3 for each of that developer's rows.", "inputs": {}, "expected": 3},
+    {"name": "test_nan_developer_yields_zero", "description": "A row with developer=NaN gets 0 regardless of other NaN-developer rows.", "inputs": {}, "expected": 0},
+    {"name": "test_case_sensitive_no_match", "description": "'Team Cherry' and 'team cherry' are not counted as the same developer.", "inputs": {}, "expected": "0 for each, not 1"}
+  ],
+  "dependencies": []
+}

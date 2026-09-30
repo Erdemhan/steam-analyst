@@ -1,0 +1,80 @@
+{
+  "module_id": "enrichment",
+  "spec_version": "0.1.0",
+  "status": "planned",
+  "package_path": "src/steam_analyst/enrichment",
+  "responsibility": "Stage two. Turn stored raw payloads into one normalized, feature-complete row per candidate app: parse and reconcile fields across sources, then compute complexity_score, estimated sales (Boxleiter band), gross/net revenue and effort-adjusted return. Writes games_enriched and game_tags.",
+  "dependencies": {
+    "internal": ["storage", "config"],
+    "external": ["pandas", "numpy"]
+  },
+  "design_notes": [
+    "Pure transformation over database state. No network access, so the stage is fully re-runnable for an existing run_id after a parameter change.",
+    "Every constant comes from EnrichmentParams, which mirrors FORMULATION.md. A literal number in a formula is a spec violation.",
+    "Every derived row is stamped with parameters_version so a score can be traced to the constants that produced it.",
+    "All derived quantities are modelled estimates, not measurements. Sales and revenue are emitted as low/mid/high bands, never as a single authoritative figure."
+  ],
+  "public_interface": [
+    {"name": "parse_raw_bundle", "kind": "function", "signature": "def parse_raw_bundle(conn: sqlite3.Connection, run_id: str) -> RawBundle", "description": "Streams raw_games for the run and groups payloads per appid across sources."},
+    {"name": "RawBundle", "kind": "dataclass", "fields": ["run_id: str", "steamspy: dict[int, dict]", "appdetails: dict[int, dict]", "reviews: dict[int, dict]"]},
+    {"name": "normalize_features", "kind": "function", "signature": "def normalize_features(bundle: RawBundle) -> pd.DataFrame", "description": "Flattens raw payloads into the base feature frame: identity, price, review counts, owners band, size_bytes, achievement_count, language_count, platform_count, dlc_count, early access flags, deck compatibility, genres, categories. Records which fields were absent."},
+    {"name": "extract_tags", "kind": "function", "signature": "def extract_tags(bundle: RawBundle, *, max_tags_per_game: int, min_votes: int) -> list[TagRow]", "description": "Normalizes tag dictionaries into (appid, tag, votes, rank) rows for game_tags."},
+    {"name": "compute_developer_catalog_size", "kind": "function", "signature": "def compute_developer_catalog_size(frame: pd.DataFrame, catalog: pd.DataFrame) -> pd.Series", "description": "Counts other titles by the same developer. Counted against the full SteamSpy catalog snapshot, not only against the candidate set, otherwise a prolific studio filtered out at stage one looks like a first-time solo developer."},
+    {"name": "compute_complexity_score", "kind": "function", "signature": "def compute_complexity_score(frame: pd.DataFrame, tags: pd.DataFrame, params: EnrichmentParams) -> tuple[pd.Series, pd.DataFrame]", "description": "Implements FORMULATION.md section 4. Returns the clipped [0,1] score plus a per-feature contribution frame for explainability in the UI. Missing features are imputed at the cohort median and flagged, never treated as zero."},
+    {"name": "estimate_sales", "kind": "function", "signature": "def estimate_sales(review_count: pd.Series, genre_bucket: pd.Series, params: EnrichmentParams) -> pd.DataFrame", "description": "Implements FORMULATION.md section 2. Returns columns estimated_sales_low/mid/high."},
+    {"name": "map_genre_bucket", "kind": "function", "signature": "def map_genre_bucket(genres: pd.Series, params: EnrichmentParams) -> pd.Series", "description": "Maps Steam genre lists onto the multiplier buckets. Unmatched genres fall to the documented default bucket and are counted."},
+    {"name": "estimate_revenue", "kind": "function", "signature": "def estimate_revenue(sales: pd.DataFrame, price_usd: pd.Series, params: EnrichmentParams) -> pd.DataFrame", "description": "Implements FORMULATION.md section 3. Returns gross and net columns. Free-to-play rows follow the approved F2P policy (open question), not a silent zero."},
+    {"name": "compute_effort_adjusted_return", "kind": "function", "signature": "def compute_effort_adjusted_return(net_revenue: pd.Series, complexity: pd.Series, params: EnrichmentParams) -> pd.Series", "description": "Implements FORMULATION.md section 5. Ordinal only."},
+    {"name": "build_enriched_frame", "kind": "function", "signature": "def build_enriched_frame(bundle: RawBundle, catalog: pd.DataFrame, params: EnrichmentParams) -> tuple[pd.DataFrame, list[TagRow]]", "description": "Composes the whole stage as a pure function, for direct unit testing from fixtures."},
+    {"name": "run_enrichment", "kind": "function", "signature": "def run_enrichment(conn: sqlite3.Connection, run_id: str, params: EnrichmentParams, *, parameters_version: str, on_event: EventSink) -> EnrichmentReport", "description": "Stage entry point. Reads raw_games, writes games_enriched and game_tags, emits progress events."},
+    {"name": "EnrichmentReport", "kind": "dataclass", "fields": ["run_id: str", "rows_written: int", "rows_dropped: int", "dropped_by_reason: dict[str, int]", "imputation_rate_by_feature: dict[str, float]", "unmatched_genre_count: int", "free_to_play_count: int", "duration_seconds: float"]},
+    {"name": "EnrichmentError", "kind": "exception"}
+  ],
+  "persistence": {"reads": ["raw_games", "runs"], "writes": ["games_enriched", "game_tags", "run_events"]},
+  "invariants": [
+    "No numeric constant appears in code; all come from EnrichmentParams",
+    "complexity_score is in [0, 1] for every written row, or NULL if too many inputs were missing to be meaningful",
+    "estimated_sales_low <= estimated_sales_mid <= estimated_sales_high for every row",
+    "Rows whose app_type is not 'game' are dropped and counted, not silently included",
+    "Re-running the stage for the same run_id replaces prior rows transactionally and is idempotent for identical parameters",
+    "Review count is taken from the Steam reviews endpoint when available and from SteamSpy only as a fallback; the source used is recorded"
+  ],
+  "edge_cases": [
+    "review_count == 0 -> estimated sales 0; effort_adjusted_return 0; row is kept (it still informs competition density)",
+    "price_usd == 0 (free-to-play) -> revenue per the approved F2P policy; must not silently become 0 revenue if the policy is 'unknown'",
+    "complexity_score == 0 -> guarded by effort_epsilon so effort_adjusted_return stays finite",
+    "size_bytes, achievement_count or languages missing from appdetails -> imputed at cohort median and flagged in imputed_features_json",
+    "More than a configured share of a row's complexity features missing -> complexity_score NULL, row excluded from simplicity ranking but kept for density",
+    "Partial or non-numeric release_date -> stored as-is plus a parsed date where possible; unparseable dates exclude the row from trend analysis only",
+    "Unmatched genre -> default multiplier bucket, counted in unmatched_genre_count",
+    "Duplicate appid across sources -> single row; source precedence documented",
+    "Empty candidate set (candidate_count == 0) -> stage succeeds writing zero rows",
+    "NaN / inf guards after every division and log transform; no NaN may reach the database silently"
+  ],
+  "testing": {
+    "unit": [
+      "estimate_sales reproduces hand-computed values for a fixed multiplier table, including the low <= mid <= high ordering",
+      "estimate_revenue reproduces hand-computed gross and net values for known price, discount and cut",
+      "compute_complexity_score returns exactly the weighted sum for a synthetic row with known normalized features",
+      "complexity clipping holds at both extremes (all-min and all-max feature rows give 0 and 1)",
+      "median imputation is applied and flagged for missing features, and zero is never substituted",
+      "map_genre_bucket routes unmatched genres to the default bucket and counts them",
+      "effort_adjusted_return stays finite when complexity_score is 0",
+      "free-to-play rows follow the configured policy",
+      "non-game app_types are dropped with the correct reason tally",
+      "the stage is idempotent: two consecutive runs over the same raw data produce identical frames"
+    ],
+    "integration": ["run_enrichment over a fixture database produces the expected games_enriched and game_tags contents"],
+    "fixtures": ["tests/fixtures/raw_bundle_small.json", "tests/fixtures/expected_enriched_small.csv"]
+  },
+  "non_goals": [
+    "No filtering by simplicity threshold (that is analysis)",
+    "No clustering or aggregation",
+    "No network access"
+  ],
+  "open_questions": [
+    "F2P handling policy (exclude vs. revenue-unknown) — blocks estimate_revenue",
+    "Whether complexity normalization bounds are calibrated empirically from the first run's percentiles and then frozen, or fixed a priori",
+    "Whether owners_estimate is used in any derived score at all, given its low confidence, or shown as a display-only column"
+  ]
+}

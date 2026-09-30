@@ -1,0 +1,25 @@
+{
+  "module": "config",
+  "function_name": "parameters_version",
+  "file_path": "src/steam_analyst/config/parameters.py",
+  "description": "Stable short hash of parameters.toml's contents, stamped onto every games_enriched and analysis_results row so a derived score can be traced back to the exact constants that produced it (ADR-009).",
+  "signature": "def parameters_version(path: Path) -> str",
+  "docstring": "Compute a stable content hash for the parameter file.\n\nArgs:\n    path: Absolute path to config/parameters.toml.\n\nReturns:\n    A short (first 12 hex characters), deterministic sha256 hash of the file's raw bytes. Using raw bytes rather than a re-serialization of the parsed dict means the hash also changes on a whitespace-only or comment-only edit, which is the more conservative (safer to over-invalidate than to silently under-invalidate) choice given that params_version exists purely for traceability, not for change deduplication.\n\nRaises:\n    ParameterError: If path does not exist or is not readable.\n",
+  "preconditions": [
+    "path points to a file, not a directory"
+  ],
+  "postconditions": [
+    "Calling parameters_version twice on the same unmodified file returns the identical string",
+    "Any byte-level change to the file changes the returned string"
+  ],
+  "edge_cases": [
+    {"input": "path does not exist", "expected_behavior": "ParameterError naming the path"},
+    {"input": "the file is re-saved with identical content but a different mtime/encoding-of-newlines", "expected_behavior": "hash is unchanged if and only if the bytes are identical; a CRLF/LF conversion does change the hash, which is intentional -- version stamping is byte-exact, not semantic"}
+  ],
+  "unit_tests": [
+    {"name": "test_stable_across_repeated_reads", "description": "Two calls on the same file return the same string.", "inputs": {"path": "tests/fixtures/parameters_valid.toml"}, "expected": "identical strings"},
+    {"name": "test_changes_when_a_value_changes", "description": "Copies the fixture, edits one numeric value, and re-hashes.", "inputs": {}, "expected": "different string from the original fixture's hash"},
+    {"name": "test_missing_file_raises", "description": "A nonexistent path raises ParameterError.", "inputs": {"path": "tests/fixtures/does_not_exist.toml"}, "expected": "ParameterError"}
+  ],
+  "dependencies": ["ParameterError"]
+}

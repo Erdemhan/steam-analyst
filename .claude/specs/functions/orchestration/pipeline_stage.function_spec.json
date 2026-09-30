@@ -1,0 +1,24 @@
+{
+  "module": "orchestration",
+  "function_name": "PipelineStage (and RUN_LEVEL_STAGE)",
+  "file_path": "src/steam_analyst/orchestration/stages.py",
+  "description": "The one place pipeline order is declared. The three stage modules never import this or each other (ADR-009); only orchestration knows the sequence.",
+  "signature": "class PipelineStage(StrEnum):\n    ACQUISITION = 'acquisition'\n    ENRICHMENT = 'enrichment'\n    ANALYSIS = 'analysis'\n\nRUN_LEVEL_STAGE: Final[str] = 'pipeline'",
+  "docstring": "PipelineStage: Declaration order is execution order -- list(PipelineStage) IS the pipeline. Values are byte-identical to run_events.stage / run_stages.stage strings and to the run_stages CHECK constraint literals ('acquisition', 'enrichment', 'analysis'), so a stage's enum value can be written directly into either table with no translation layer.\n\nRUN_LEVEL_STAGE: The run_events.stage value used for run-level records that are not tied to one stage (preflight, run started, run finished, cancellation requested). Deliberately a plain string constant, not a PipelineStage member, because it is not executable and must never be accepted by begin_run_stage/finish_run_stage (which are constrained to the three real stages by the run_stages CHECK).\n",
+  "preconditions": [],
+  "postconditions": [
+    "list(PipelineStage) == [PipelineStage.ACQUISITION, PipelineStage.ENRICHMENT, PipelineStage.ANALYSIS], in that exact order",
+    "Every PipelineStage.value is accepted by the run_stages.stage CHECK constraint",
+    "RUN_LEVEL_STAGE is never equal to any PipelineStage.value"
+  ],
+  "edge_cases": [
+    {"input": "storage.begin_run_stage called with RUN_LEVEL_STAGE as the stage argument", "expected_behavior": "StorageError from the CHECK constraint -- this is a caller bug orchestration must never trigger; RUN_LEVEL_STAGE is only ever passed to append_run_event, never to begin_run_stage/finish_run_stage"},
+    {"input": "A future fourth pipeline stage is added", "expected_behavior": "requires a new PipelineStage member AND a matching run_stages.stage CHECK constraint update (a storage migration) -- the two must change together, never one without the other"}
+  ],
+  "unit_tests": [
+    {"name": "test_declaration_order_is_execution_order", "description": "list(PipelineStage) matches the documented three-stage sequence exactly.", "inputs": {}, "expected": "['acquisition', 'enrichment', 'analysis']"},
+    {"name": "test_values_match_run_stages_check_literals", "description": "Every PipelineStage value is one of the run_stages CHECK-constrained literals, asserted against the schema string in 01_storage.module_spec.json.", "inputs": {}, "expected": "all three values present in the CHECK set"},
+    {"name": "test_run_level_stage_distinct_from_pipeline_stages", "description": "RUN_LEVEL_STAGE is not equal to any PipelineStage member's value.", "inputs": {}, "expected": "'pipeline' not in {'acquisition', 'enrichment', 'analysis'}"}
+  ],
+  "dependencies": []
+}

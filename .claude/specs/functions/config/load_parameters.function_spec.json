@@ -1,0 +1,28 @@
+{
+  "module": "config",
+  "function_name": "load_parameters",
+  "file_path": "src/steam_analyst/config/parameters.py",
+  "description": "Parses config/parameters.toml with tomllib, validates it via validate_parameters, and constructs the three typed parameter dataclasses consumed by acquisition, enrichment and analysis.",
+  "signature": "def load_parameters(path: Path) -> tuple[AcquisitionConfig, EnrichmentParams, AnalysisParams]",
+  "docstring": "Load and validate the machine-readable mirror of FORMULATION.md.\n\nArgs:\n    path: Absolute path to config/parameters.toml (typically Settings.parameters_path).\n\nReturns:\n    A (AcquisitionConfig, EnrichmentParams, AnalysisParams) tuple, fully validated.\n\nRaises:\n    ParameterError: On a missing file, missing section/key, an out-of-range value, a weight set that does not sum to 1, or an unordered multiplier triple -- delegated to validate_parameters for everything past the missing-file check.\n",
+  "preconditions": [
+    "path.suffix == '.toml' (defensive; not itself sufficient validation)"
+  ],
+  "postconditions": [
+    "On success, the three returned dataclasses satisfy every invariant listed in their own specs",
+    "The function performs no writes; parameters.toml is read-only from config's perspective (ADR-012 / config non_goals)"
+  ],
+  "edge_cases": [
+    {"input": "path does not exist", "expected_behavior": "ParameterError naming the expected path (not a raw FileNotFoundError leaking to the caller)"},
+    {"input": "path exists but is not valid TOML syntax", "expected_behavior": "ParameterError wrapping the tomllib.TOMLDecodeError with the file path and line/column if available"},
+    {"input": "path exists, is valid TOML, but fails validate_parameters", "expected_behavior": "propagates the ParameterError raised by validate_parameters unchanged"},
+    {"input": "[analysis].tag_distance_threshold absent (pre-freeze run 1)", "expected_behavior": "AnalysisParams.tag_distance_threshold is None; load succeeds"}
+  ],
+  "unit_tests": [
+    {"name": "test_load_parameters_accepts_complete_fixture", "description": "tests/fixtures/parameters_valid.toml loads into three populated, mutually consistent dataclasses.", "inputs": {"path": "tests/fixtures/parameters_valid.toml"}, "expected": "(AcquisitionConfig(...), EnrichmentParams(...), AnalysisParams(...))"},
+    {"name": "test_load_parameters_missing_file", "description": "A nonexistent path raises ParameterError naming that path.", "inputs": {"path": "tests/fixtures/does_not_exist.toml"}, "expected": "ParameterError"},
+    {"name": "test_load_parameters_invalid_syntax", "description": "tests/fixtures/parameters_invalid_syntax.toml raises ParameterError.", "inputs": {"path": "tests/fixtures/parameters_invalid_syntax.toml"}, "expected": "ParameterError"},
+    {"name": "test_load_parameters_each_invalid_fixture", "description": "Each of tests/fixtures/parameters_invalid_*.toml (missing section, missing key, out-of-range ratio, weights not summing to 1, unordered multiplier triple) raises ParameterError.", "inputs": {}, "expected": "ParameterError for every fixture in the glob"}
+  ],
+  "dependencies": ["validate_parameters", "AcquisitionConfig", "CoarseFilterCriteria", "EnrichmentParams", "AnalysisParams", "ParameterError"]
+}

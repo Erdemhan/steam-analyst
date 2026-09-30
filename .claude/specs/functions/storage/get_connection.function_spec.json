@@ -1,0 +1,27 @@
+{
+  "module": "storage",
+  "function_name": "get_connection",
+  "file_path": "src/steam_analyst/storage/connection.py",
+  "description": "Opens a sqlite3.Connection with the pragmas required by ADR-001 (WAL mode, foreign keys on, synchronous=NORMAL), creating the parent directory of db_path on demand.",
+  "signature": "def get_connection(db_path: Path) -> sqlite3.Connection",
+  "docstring": "Open a configured SQLite connection.\n\nArgs:\n    db_path: Absolute path to the database file. Parent directories are created if missing.\n\nReturns:\n    An open sqlite3.Connection with journal_mode=WAL, foreign_keys=ON and synchronous=NORMAL applied, row_factory set to sqlite3.Row, and an internal thread-id tag recorded for later cross-thread-use detection by the other storage functions.\n\nRaises:\n    StorageError: If the underlying sqlite3.connect call fails (e.g. db_path's parent cannot be created due to a permissions error).\n",
+  "preconditions": [
+    "db_path is an absolute pathlib.Path (callers resolve relative paths before calling, per config.Settings)"
+  ],
+  "postconditions": [
+    "PRAGMA journal_mode returns 'wal'",
+    "PRAGMA foreign_keys returns 1",
+    "The connection is tagged with threading.get_ident() at creation time so a later call from a different thread can be detected and rejected"
+  ],
+  "edge_cases": [
+    {"input": "db_path's parent directory does not exist", "expected_behavior": "parent directories are created (mkdir(parents=True, exist_ok=True)) before connecting"},
+    {"input": "db_path points to a location without write permission", "expected_behavior": "StorageError wrapping the underlying OSError/sqlite3.OperationalError"},
+    {"input": "db_path already exists as a valid, older-schema database", "expected_behavior": "connects successfully; initialize_schema/migrate are separate, explicit steps, not run implicitly by get_connection"}
+  ],
+  "unit_tests": [
+    {"name": "test_pragmas_applied", "description": "A fresh connection reports WAL mode and foreign_keys=1.", "inputs": {"db_path": "tmp/test.db"}, "expected": "journal_mode == 'wal' and foreign_keys == 1"},
+    {"name": "test_creates_missing_parent_directory", "description": "db_path under a nonexistent directory tree still succeeds.", "inputs": {"db_path": "tmp/does/not/exist/test.db"}, "expected": "connection opened, directory created"},
+    {"name": "test_unwritable_path_raises_storage_error", "description": "A read-only target directory raises StorageError.", "inputs": {"db_path": "/read_only_dir/test.db"}, "expected": "StorageError"}
+  ],
+  "dependencies": ["StorageError"]
+}

@@ -1,0 +1,21 @@
+{
+  "module": "analysis",
+  "function_name": "AnalysisError",
+  "file_path": "src/steam_analyst/analysis/errors.py",
+  "description": "Raised for stage-fatal analysis failures: unknown run_id, or enrichment never having completed for the run.",
+  "signature": "class AnalysisError(Exception): ...",
+  "docstring": "Stage-fatal analysis failure.\n\nRaised by run_analysis when run_id does not exist, or when games_enriched is empty AND no prior enrichment stage_complete event exists for the run (distinguishing this from a legitimately empty candidate set that enrichment itself completed successfully with zero rows). NOT raised for a small-but-nonzero candidate set, a degenerate clustering, or any single-archetype/zero-variance condition -- those are handled and reported, not raised, per the module's own design.\n",
+  "preconditions": [],
+  "postconditions": [
+    "An AnalysisError propagating out of run_analysis results in the run's status being set to 'failed' via orchestration's exception-to-terminal-status translation"
+  ],
+  "edge_cases": [
+    {"input": "run_analysis called for a run_id where enrichment was never invoked at all", "expected_behavior": "AnalysisError, not a silently-empty report"},
+    {"input": "run_analysis called for a run_id that legitimately has zero enriched rows because the candidate set was empty", "expected_behavior": "NOT raised; stage succeeds with empty-but-well-formed results, per run_analysis's own edge case"}
+  ],
+  "unit_tests": [
+    {"name": "test_enrichment_never_run_raises", "description": "A run_id with no enrichment stage_complete event and zero games_enriched rows raises AnalysisError.", "inputs": {}, "expected": "AnalysisError"},
+    {"name": "test_legitimately_empty_candidate_set_does_not_raise", "description": "A run_id where enrichment completed successfully with zero rows does not raise.", "inputs": {}, "expected": "no exception; AnalysisReport with all-zero counts"}
+  ],
+  "dependencies": []
+}

@@ -1,0 +1,27 @@
+{
+  "module": "reporting",
+  "function_name": "build_rationale",
+  "file_path": "src/steam_analyst/reporting/case_studies.py",
+  "description": "Template-filled sentence naming the concrete signals that put a game on the case-study list, using fixed templates over stored numeric fields only -- no free-form generated prose, so every rendered claim traces back to a stored value.",
+  "signature": "def build_rationale(row: pd.Series, archetype_label: str) -> str",
+  "docstring": "Build one case study's rationale sentence.\n\nArgs:\n    row: A single games_enriched row (as a Series) for the case study's appid.\n    archetype_label: The game's assigned cluster's label.\n\nReturns:\n    A single sentence assembled from a fixed template, naming: review volume (review_count), positivity (review_positive_pct), price (price_usd), install size (size_bytes, rendered in MB/GB), and developer catalog size (dev_title_count), plus the archetype_label. Uses hedged wording ONLY: 'plausibly small in scope', 'appears compact', 'signals suggest' -- NEVER 'took two weeks to build' or any unhedged development-time/cost claim, per ARCHITECTURE.md limitation 3 and the module's own invariant.\n\nExample: \"With {review_count:,} reviews ({review_positive_pct:.0%} positive) at ${price_usd:.2f}, this {archetype_label} title's {size_bytes} install size and single prior release from its developer suggest a plausibly small development scope.\"\n",
+  "preconditions": [
+    "row has all five referenced fields present (NaN is handled per-field, not assumed absent -- see edge cases)"
+  ],
+  "postconditions": [
+    "The output contains no phrase from a forbidden-phrase list (e.g. 'took X weeks', 'cost $X to make', 'developed in X months') -- verified by reporting's own tests via a fixed regex/substring check",
+    "Every concrete number appearing in the sentence is read directly from row, never fabricated or estimated within this function"
+  ],
+  "edge_cases": [
+    {"input": "row.dev_title_count is NaN (developer identity unknown)", "expected_behavior": "that clause is omitted from the sentence entirely rather than rendering 'nan' or a placeholder"},
+    {"input": "row.price_usd == 0 (free-to-play)", "expected_behavior": "price clause renders 'free-to-play' instead of '$0.00'"},
+    {"input": "row.review_positive_pct is NaN", "expected_behavior": "the positivity parenthetical is omitted"}
+  ],
+  "unit_tests": [
+    {"name": "test_rationale_contains_stored_signals", "description": "A fully populated fixture row's rationale contains the exact review_count, price and archetype_label values, per the module's own testing requirement.", "inputs": {}, "expected": "sentence contains the row's own review_count, price_usd and archetype_label"},
+    {"name": "test_rationale_contains_no_unhedged_effort_claim", "description": "The output is checked against a forbidden-phrase list and contains none of them, per the module's own testing requirement.", "inputs": {}, "expected": "no forbidden phrase present"},
+    {"name": "test_free_to_play_renders_free_not_zero_dollars", "description": "price_usd=0 renders as 'free-to-play', not '$0.00'.", "inputs": {"price_usd": 0.0}, "expected": "'free-to-play' in output"},
+    {"name": "test_missing_dev_title_count_omits_clause", "description": "dev_title_count=NaN omits that clause without leaving a dangling 'nan' string.", "inputs": {}, "expected": "'nan' not in output"}
+  ],
+  "dependencies": []
+}

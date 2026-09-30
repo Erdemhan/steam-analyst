@@ -1,0 +1,27 @@
+{
+  "module": "storage",
+  "function_name": "list_runs",
+  "file_path": "src/steam_analyst/storage/runs.py",
+  "description": "Run list for the Past Analyses UI page, newest first, with per-run candidate counts joined in.",
+  "signature": "def list_runs(conn: sqlite3.Connection, *, limit: int = 50, offset: int = 0) -> pd.DataFrame",
+  "docstring": "List runs newest-first with pagination.\n\nArgs:\n    conn: An open connection.\n    limit: Maximum rows to return.\n    offset: Rows to skip, for pagination.\n\nReturns:\n    A DataFrame with columns: run_id, started_at, finished_at, status, trigger_type, candidate_count (count of games_enriched rows for that run_id, 0 if enrichment has not run yet), sorted by started_at descending.\n",
+  "preconditions": [
+    "limit > 0",
+    "offset >= 0"
+  ],
+  "postconditions": [
+    "Result is sorted strictly by started_at descending, ties broken by run_id descending (consistent with run_id being timestamp-prefixed)",
+    "candidate_count is always a non-negative integer, never NaN, even for a run with no games_enriched rows yet"
+  ],
+  "edge_cases": [
+    {"input": "No runs exist in the database", "expected_behavior": "returns an empty DataFrame with the correct column set (not a DataFrame with zero columns)"},
+    {"input": "offset beyond the total row count", "expected_behavior": "returns an empty DataFrame, not an error"},
+    {"input": "A run with status='pending' and zero games_enriched rows", "expected_behavior": "candidate_count == 0, not NULL/NaN"}
+  ],
+  "unit_tests": [
+    {"name": "test_list_runs_newest_first", "description": "Three runs created in sequence are returned in reverse creation order.", "inputs": {"limit": 50, "offset": 0}, "expected": "DataFrame ordered [run3, run2, run1]"},
+    {"name": "test_list_runs_empty_database", "description": "No runs -> empty DataFrame with expected columns.", "inputs": {}, "expected": "empty DataFrame, columns == ['run_id','started_at','finished_at','status','trigger_type','candidate_count']"},
+    {"name": "test_list_runs_pagination", "description": "limit=1, offset=1 returns exactly the second-newest run.", "inputs": {"limit": 1, "offset": 1}, "expected": "single-row DataFrame for the second-newest run"}
+  ],
+  "dependencies": []
+}

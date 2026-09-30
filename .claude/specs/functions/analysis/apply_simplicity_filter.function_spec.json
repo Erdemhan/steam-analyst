@@ -1,0 +1,28 @@
+{
+  "module": "analysis",
+  "function_name": "apply_simplicity_filter",
+  "file_path": "src/steam_analyst/analysis/simplicity.py",
+  "description": "Implements FORMULATION.md section 3a: splits the enriched frame into the 'buildable' subset (bottom 40th percentile of C_i within the run's own candidate set) and a rejection tally.",
+  "signature": "def apply_simplicity_filter(frame: pd.DataFrame, params: AnalysisParams) -> tuple[pd.DataFrame, dict[str, int]]",
+  "docstring": "Split candidates into the simple/buildable subset and the rest.\n\nArgs:\n    frame: games_enriched-shaped DataFrame for the run (storage.read_enriched output), including rows with NULL complexity_score.\n    params: AnalysisParams.simplicity_percentile (locked value: 0.40) -- a percentile cutoff, NOT an absolute complexity score ceiling.\n\nReturns:\n    (buildable, rejected_by_reason): buildable contains rows whose complexity_score is non-null AND <= the run-local percentile(frame['complexity_score'].dropna(), params.simplicity_percentile * 100) cutoff. rejected_by_reason has keys 'above_simplicity_threshold' and 'null_complexity_score', counting rows excluded for each. Rows with NULL complexity_score are excluded from `buildable` but this function does not remove them from any other frame the caller holds -- the module's density/competition functions separately re-read the full frame when they need NULL-complexity rows included, per the module's own invariant 'Rows with NULL complexity_score are excluded from the subset but remain available for density counting'.\n",
+  "preconditions": [
+    "0 < params.simplicity_percentile <= 1.0",
+    "frame has a complexity_score column"
+  ],
+  "postconditions": [
+    "len(buildable) + rejected_by_reason['above_simplicity_threshold'] + rejected_by_reason['null_complexity_score'] == len(frame)",
+    "The percentile cutoff is computed fresh from THIS run's own non-null complexity_score distribution every call -- never a value carried over from another run or hard-coded"
+  ],
+  "edge_cases": [
+    {"input": "A row with complexity_score exactly at the computed percentile cutoff", "expected_behavior": "included in buildable (inclusive boundary, <=), per the module's own testing requirement 'honours the threshold at the boundary'"},
+    {"input": "Every row has NULL complexity_score", "expected_behavior": "buildable is empty; rejected_by_reason['null_complexity_score'] == len(frame); no percentile can be computed (pandas quantile on an empty non-null series), handled by short-circuiting to an empty buildable frame rather than raising"},
+    {"input": "frame has zero rows entirely (empty candidate set)", "expected_behavior": "returns (empty buildable, {'above_simplicity_threshold': 0, 'null_complexity_score': 0})"}
+  ],
+  "unit_tests": [
+    {"name": "test_boundary_row_included", "description": "A row exactly at the 40th percentile cutoff is included in buildable.", "inputs": {}, "expected": "boundary row present in buildable"},
+    {"name": "test_null_complexity_rows_excluded_and_tallied", "description": "Rows with NULL complexity_score are absent from buildable and counted under null_complexity_score.", "inputs": {}, "expected": "those rows absent; tally matches count"},
+    {"name": "test_all_null_complexity_handled_without_raising", "description": "An all-NULL complexity_score frame returns an empty buildable set without raising.", "inputs": {}, "expected": "buildable is empty, no exception"},
+    {"name": "test_empty_frame", "description": "Zero input rows returns empty buildable and all-zero tallies.", "inputs": {}, "expected": "empty buildable, zero tallies"}
+  ],
+  "dependencies": []
+}

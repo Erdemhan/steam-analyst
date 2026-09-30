@@ -1,0 +1,30 @@
+{
+  "module": "enrichment",
+  "function_name": "compute_tag_score",
+  "file_path": "src/steam_analyst/enrichment/features.py",
+  "description": "Computes the two tag-derived complexity features (simplicity_tag_score, negative-weighted; complexity_tag_score, positive-weighted) from FORMULATION.md section 4's feature table, given each app's extracted tags and the configured simplicity/complexity tag vocabularies.",
+  "signature": "def compute_tag_score(tags: pd.DataFrame, *, vocabulary: list[str]) -> pd.Series",
+  "docstring": "Compute a per-appid tag-match score against a fixed vocabulary.\n\nArgs:\n    tags: game_tags-shaped DataFrame (appid, tag, votes, rank) for the run, typically the output of extract_tags materialized into a frame, or storage.read_tags.\n    vocabulary: EnrichmentParams.simplicity_tags or EnrichmentParams.complexity_tags, a list of tag strings (case-insensitive exact match against the tag column).\n\nReturns:\n    A pd.Series indexed by appid, one row per DISTINCT appid present in tags, giving the linear match score in FORMULATION.md section 4's terms: the fraction of the app's own retained tags that fall in vocabulary (i.e. count(matching tags) / count(this app's total retained tags)), a value in [0, 1]. Appids not present in tags at all are absent from the returned Series (compute_complexity_score's caller is responsible for reindexing against the full candidate frame and treating absent appids as missing-for-imputation, consistent with 'Games carrying no tags at all -> excluded from clustering, retained in the tag-independent summaries' from the analysis module -- the enrichment-side equivalent is that a taglessgame's tag-derived complexity features are imputed at the cohort median, not scored as 0).\n",
+  "preconditions": [
+    "vocabulary entries are lowercase-normalized before comparison, or comparison is explicitly case-insensitive",
+    "tags has no duplicate (appid, tag) pairs (guaranteed by extract_tags/game_tags primary key)"
+  ],
+  "postconditions": [
+    "Every returned value is in [0.0, 1.0]",
+    "An appid with zero retained tags at all is absent from the result (division by zero avoided by exclusion, not by returning 0)"
+  ],
+  "edge_cases": [
+    {"input": "An appid whose every tag matches the vocabulary", "expected_behavior": "1.0"},
+    {"input": "An appid whose every tag matches none of the vocabulary", "expected_behavior": "0.0"},
+    {"input": "An appid with zero retained tags (post extract_tags filtering)", "expected_behavior": "absent from the returned Series entirely, not 0.0 -- 0.0 would wrongly imply 'known to have no simplicity-indicating tags' rather than 'unknown due to no tag data'"},
+    {"input": "Tag casing mismatch, e.g. tag='Pixel Graphics' vs vocabulary entry 'pixel graphics'", "expected_behavior": "matched (case-insensitive comparison)"}
+  ],
+  "unit_tests": [
+    {"name": "test_all_tags_match_vocabulary", "description": "An appid with tags entirely in vocabulary scores 1.0.", "inputs": {}, "expected": 1.0},
+    {"name": "test_no_tags_match_vocabulary", "description": "An appid with no matching tags scores 0.0.", "inputs": {}, "expected": 0.0},
+    {"name": "test_partial_match_ratio", "description": "2 of 4 tags matching scores 0.5.", "inputs": {}, "expected": 0.5},
+    {"name": "test_taglessgame_absent_from_result", "description": "An appid with zero rows in tags is not a key in the returned Series.", "inputs": {}, "expected": "appid not in result.index"},
+    {"name": "test_case_insensitive_match", "description": "'Pixel Graphics' matches vocabulary entry 'pixel graphics'.", "inputs": {}, "expected": "matched, contributes to the ratio"}
+  ],
+  "dependencies": []
+}

@@ -1,0 +1,97 @@
+{
+  "module_id": "ui",
+  "spec_version": "0.1.0",
+  "status": "planned",
+  "package_path": "src/steam_analyst/ui",
+  "responsibility": "Streamlit presentation shell. Three pages: Run New Analysis (parameter form, trigger, live progress, cancel), Past Analyses (run list with status and headline metrics, resume and delete actions), Analysis Detail (opportunity matrix, tag table, case studies, caveats). Contains widget layout and routing only; every value it renders comes from reporting and every action it triggers goes to orchestration.",
+  "dependencies": {
+    "internal": ["orchestration", "reporting", "storage", "config"],
+    "external": ["streamlit"]
+  },
+  "design_notes": [
+    "Routing uses st.navigation with st.Page objects built from functions in ui/pages.py, not the pages/ directory convention (ADR-018). The directory convention requires top-level scripts that cannot take arguments and cannot be imported into a test, which would put this module outside the project's own testing rules.",
+    "This is a solo-developer local tool. There is no auth, no multi-user session handling, no theming layer and no component library. Proportionality is a design constraint, not an omission.",
+    "Long work never runs on the script thread. The UI calls orchestration.start_pipeline_async / resume_run and then polls run_events (ADR-006).",
+    "Connections are opened per rerun and closed before the script ends (ADR-017). Caching a connection would share it across Streamlit's ScriptRunner threads and trip storage's cross-thread guard.",
+    "The form exposes only PipelineConfig fields. Values recorded in FORMULATION.md are user-locked and are not editable from the UI at any point."
+  ],
+  "public_interface": [
+    {"name": "main", "kind": "function", "signature": "def main() -> None", "description": "Entry point called by the three-line app.py. Sets page config, loads settings, ensures the schema exists, runs orchestration.reconcile_orphaned_runs once per process, builds the navigation and dispatches. All of this happens inside a single storage.connect() context that closes before the function returns."},
+    {"name": "build_navigation", "kind": "function", "signature": "def build_navigation() -> st.navigation", "description": "Returns the st.navigation object over three st.Page entries built from the render functions below. Separated from main so a test can assert the page set without executing a page."},
+    {"name": "render_new_analysis_page", "kind": "function", "signature": "def render_new_analysis_page(conn: sqlite3.Connection, settings: Settings) -> None", "description": "Parameter form bound to PipelineConfig (start_stage is fixed to ACQUISITION here; resuming is done from the run list), a Start button calling orchestration.start_pipeline_async, and the progress panel for st.session_state['active_run_id'] when one is set. Shows the effective parameters_version read-only, with a note that the values themselves live in FORMULATION.md."},
+    {"name": "render_progress_panel", "kind": "function", "signature": "@st.fragment(run_every='2s')\ndef render_progress_panel(db_path: Path, run_id: str) -> None", "description": "The only polling surface in the app. Opens its own short-lived connection, reads run_events incrementally with since_event_id=st.session_state['last_event_id'], appends them to st.session_state['event_log'], renders the stage list from storage.read_run_stages plus the latest progress value, and offers a Cancel button wired to orchestration.cancel_run. When the run reaches a terminal status the fragment stops polling and calls st.rerun() once so the full page re-renders with results."},
+    {"name": "render_past_analyses_page", "kind": "function", "signature": "def render_past_analyses_page(conn: sqlite3.Connection, settings: Settings) -> None", "description": "storage.list_runs table with status, stage completion, headline metrics and duration. Per row: Open (sets the run_id query parameter and switches to the detail page), Resume (only when the run is not succeeded and has no live worker), Delete behind a confirmation."},
+    {"name": "render_analysis_detail_page", "kind": "function", "signature": "def render_analysis_detail_page(conn: sqlite3.Connection, settings: Settings) -> None", "description": "Reads run_id from st.query_params, calls reporting.load_run_report once, and renders opportunity matrix, tag summary, trends, case studies and the caveat panel. Renders reporting.partial_run_caveat above the results whenever report.is_partial is True."},
+    {"name": "render_caveat_panel", "kind": "function", "signature": "def render_caveat_panel(caveats: Sequence[Caveat]) -> None", "description": "Fixed expander rendering every caveat with its severity. Required on every surface that shows a sales, revenue or simplicity figure."},
+    {"name": "SESSION_KEYS", "kind": "constant", "signature": "SESSION_KEYS: Final[tuple[str, ...]] = ('active_run_id', 'last_event_id', 'event_log')", "description": "The complete set of session-state keys this module may use. A test asserts that no other key is written."}
+  ],
+  "session_state": {
+    "active_run_id": {"type": "str | None", "purpose": "The run currently being watched by the progress panel. Set by Start and by Resume, cleared when the run reaches a terminal status and the user dismisses the panel."},
+    "last_event_id": {"type": "int", "purpose": "High-water mark for incremental read_run_events, so each poll transfers only new rows instead of the whole log."},
+    "event_log": {"type": "list[RunEvent]", "purpose": "Accumulated events across polls. Needed precisely because the read is incremental; without it each poll would render only the newest slice."},
+    "note": "Exactly three keys. The selected run for the detail page is not one of them: it lives in st.query_params['run_id'] so the view is refresh-safe and linkable. Form field values are not one of them either, since Streamlit widgets already retain their own state by key."
+  },
+  "routing": {
+    "mechanism": "st.navigation over st.Page objects wrapping functions",
+    "pages": [
+      {"title": "Run New Analysis", "url_path": "new", "render": "render_new_analysis_page", "default": true},
+      {"title": "Past Analyses", "url_path": "runs", "render": "render_past_analyses_page"},
+      {"title": "Analysis Detail", "url_path": "detail", "render": "render_analysis_detail_page", "note": "Addressed by the run_id query parameter; reachable from the run list or by direct URL"}
+    ],
+    "rejected_alternative": "A pages/ directory of top-level scripts, or a single script with a sidebar radio and manual if/elif routing. The first cannot pass arguments and is not importable for tests; the second reimplements routing by hand for no benefit."
+  },
+  "persistence": {"reads": ["via reporting and storage only"], "writes": ["none directly; run and stage rows are written by orchestration"]},
+  "invariants": [
+    "No SQL, no HTTP, no derived-value computation anywhere in this module",
+    "No sqlite3.Connection is cached, memoised or stored in session state; every connection is opened and closed inside one rerun or one fragment run",
+    "st.cache_resource is never used for a database connection",
+    "No widget writes to FORMULATION.md-governed values; the parameter form is limited to PipelineConfig fields",
+    "Every surface showing a sales, revenue or complexity figure also renders the caveat panel",
+    "Every displayed aggregate shows its sample size, as delivered by reporting",
+    "Only the keys in SESSION_KEYS are written to st.session_state",
+    "Cancel and Resume buttons are rendered only when orchestration reports the corresponding state, never speculatively"
+  ],
+  "edge_cases": [
+    "run_id query parameter missing or unknown -> friendly empty state with a link to the run list, never a traceback",
+    "Detail page opened for a run that is still running -> partial report rendered plus the progress panel, with the missing stages named",
+    "Detail page opened for a failed run -> partial report plus the error message from partial_run_caveat",
+    "Browser refreshed mid-run -> progress is recovered from run_events, because session state is rebuilt from last_event_id=0 and the whole log is re-read once",
+    "Process restarted while a run was in flight -> reconcile_orphaned_runs at startup marks it failed and the run list offers Resume",
+    "Cancel pressed twice -> second press is a no-op; the button is disabled once cancellation has been requested",
+    "Cancel pressed after the run already finished -> cancel_run returns False and the UI shows the terminal status instead of an error",
+    "Resume pressed on a run that another tab already resumed -> orchestration raises PipelineError, rendered as an inline warning rather than a crash",
+    "Start pressed while a run is already active -> the Start button is disabled while orchestration.active_run_ids() is non-empty, since ADR-001 supports only one writer",
+    "Empty result set (candidate_count == 0 or too few games to cluster) -> explicit 'not enough data' message, never an empty chart",
+    "Very long event log -> the panel renders a bounded tail with the full log available in an expander, so a multi-thousand-app run does not blow up the page",
+    "Delete pressed -> two-step confirmation, because storage.delete_run cascades irreversibly"
+  ],
+  "testing": {
+    "unit": [
+      "build_navigation returns exactly the three expected pages with the expected default",
+      "render_* functions write no session-state key outside SESSION_KEYS (asserted with AppTest)",
+      "the parameter form exposes exactly the PipelineConfig fields and no FORMULATION.md value",
+      "Start is disabled while orchestration.active_run_ids() is non-empty",
+      "Cancel is rendered only when the watched run is live, and is disabled after one press",
+      "Resume is rendered only for a non-succeeded run with no live worker",
+      "an unknown run_id query parameter renders the empty state and raises nothing",
+      "a partial report renders partial_run_caveat above the results and names the missing stages",
+      "the caveat panel appears on every page that renders a revenue or complexity figure",
+      "no connection object survives past a rerun (asserted by a connection factory stub counting open/close pairs)"
+    ],
+    "integration": ["an AppTest session driving Start against a stubbed orchestration, polling the progress panel, then opening the detail page for the finished run"],
+    "harness": "streamlit.testing.v1.AppTest with orchestration and reporting injected as stubs, so no test starts a thread or touches the network",
+    "fixtures": ["tests/fixtures/run_report_fixture.sqlite", "tests/fixtures/run_report_partial_fixture.sqlite"]
+  },
+  "non_goals": [
+    "No cross-run comparison view (ADR-011)",
+    "No authentication, no multi-user session handling, no deployment concerns; this is a local single-user tool (ADR-002)",
+    "No CSV, PDF or image export in v1",
+    "No editing of FORMULATION.md values or parameters.toml from the UI",
+    "No custom components, no JavaScript, no theming beyond Streamlit defaults",
+    "No business logic of any kind"
+  ],
+  "open_questions": [
+    "Polling interval: 2s is proposed. Longer is cheaper on a multi-hour run but makes the UI feel dead",
+    "Whether the run list should paginate or simply cap at the most recent 50 runs"
+  ]
+}

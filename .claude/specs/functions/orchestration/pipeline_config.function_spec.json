@@ -1,0 +1,30 @@
+{
+  "module": "orchestration",
+  "function_name": "PipelineConfig",
+  "file_path": "src/steam_analyst/orchestration/pipeline_config.py",
+  "description": "Only what varies per run and is NOT a FORMULATION.md-governed value. This is the entire content of runs.config_json (see storage.create_run and storage_types.RunRecord.config) -- it deliberately does not duplicate AcquisitionConfig/EnrichmentParams/AnalysisParams, which are reconstructable from parameters_version plus the git-tracked config/parameters.toml.",
+  "signature": "@dataclass(frozen=True)\nclass PipelineConfig:\n    start_stage: PipelineStage = PipelineStage.ACQUISITION\n    max_catalog_pages: int | None = None\n    request_budget_override: int | None = None\n    notes: str | None = None\n\n    def to_dict(self) -> dict: ...\n\n    @classmethod\n    def from_dict(cls, data: dict) -> 'PipelineConfig': ...",
+  "docstring": "Per-run pipeline options, never a formulation parameter.\n\nAttributes:\n    start_stage: Which stage to begin at. ACQUISITION for a fresh run; set to a later stage by resume_run (first non-succeeded stage) or by a deliberate stage re-run after a parameter change.\n    max_catalog_pages: Smoke-test limiter forwarded to acquisition.fetch_steamspy_catalog(max_pages=...). None means no limit.\n    request_budget_override: Overrides AcquisitionConfig.request_budget for this run only when set; None defers to the configured default.\n    notes: Free user text, persisted to runs.notes verbatim (also duplicated into config_json for convenience, since config_json is the single JSON blob the UI reads back for the 'Run New Analysis' form's remembered values).\n\nto_dict / from_dict: Round-trip through runs.config_json. from_dict must accept a dict missing newer fields (loading an older run after a code change) by falling back to each field's own default rather than raising.\n",
+  "preconditions": [
+    "max_catalog_pages, if not None, is a positive int",
+    "request_budget_override, if not None, is a positive int"
+  ],
+  "postconditions": [
+    "PipelineConfig.from_dict(cfg.to_dict()) == cfg for every valid cfg",
+    "from_dict tolerates a dict from an older schema version missing newer fields, filling in defaults rather than raising KeyError"
+  ],
+  "edge_cases": [
+    {"input": "from_dict({}) (empty dict, e.g. a run created before a new field existed)", "expected_behavior": "returns PipelineConfig() with all defaults, no exception"},
+    {"input": "from_dict with an unknown extra key (a future field read by older code)", "expected_behavior": "the unknown key is ignored, not an error -- forward compatibility in the other direction"},
+    {"input": "start_stage stored as the plain string 'enrichment' rather than a PipelineStage instance (round-tripped through JSON, which has no enum type)", "expected_behavior": "from_dict converts it back to PipelineStage.ENRICHMENT; to_dict emits the plain string value, never the enum repr"},
+    {"input": "max_catalog_pages=0", "expected_behavior": "not a valid 'no limit' spelling (that is None) and not a valid positive limit either -- treated as invalid; the caller should omit the field or pass a positive int, but PipelineConfig itself does not raise since it is a plain dataclass with no __post_init__ validation, so this is caught by whichever validation layer constructs it from a UI form, not by this type"}
+  ],
+  "unit_tests": [
+    {"name": "test_roundtrip_default_values", "description": "A default-constructed PipelineConfig survives to_dict/from_dict unchanged.", "inputs": {}, "expected": "from_dict(to_dict(PipelineConfig())) == PipelineConfig()"},
+    {"name": "test_roundtrip_all_fields_set", "description": "A fully populated PipelineConfig survives the round trip.", "inputs": {"start_stage": "PipelineStage.ENRICHMENT", "max_catalog_pages": 5, "request_budget_override": 1000, "notes": "smoke test"}, "expected": "unchanged after round trip"},
+    {"name": "test_from_dict_empty_uses_defaults", "description": "from_dict({}) returns all-default PipelineConfig.", "inputs": {"data": {}}, "expected": "PipelineConfig()"},
+    {"name": "test_from_dict_ignores_unknown_keys", "description": "An extra unrecognized key does not raise.", "inputs": {"data": {"start_stage": "acquisition", "future_field": 123}}, "expected": "PipelineConfig(start_stage=PipelineStage.ACQUISITION)"},
+    {"name": "test_start_stage_json_string_roundtrip", "description": "start_stage survives a real json.dumps/json.loads round trip through to_dict/from_dict, not just direct dict passing.", "inputs": {}, "expected": "PipelineStage.ANALYSIS preserved through json.dumps(cfg.to_dict()) then json.loads then from_dict"}
+  ],
+  "dependencies": ["PipelineStage"]
+}

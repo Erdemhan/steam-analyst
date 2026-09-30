@@ -1,0 +1,36 @@
+{
+  "module": "orchestration",
+  "function_name": "resume_run",
+  "file_path": "src/steam_analyst/orchestration/runner.py",
+  "description": "Resumes an existing run in place (ADR-014), reusing its run_id and its raw_games cache rather than starting a new run and re-fetching the whole catalog.",
+  "signature": "def resume_run(db_path: Path, run_id: str, *, settings: Settings | None = None) -> str",
+  "docstring": "Resume an existing, non-running run from its first non-succeeded stage.\n\nArgs:\n    db_path: Never a connection, same reasoning as start_pipeline_async.\n    run_id: An existing run. Must not currently be registered as running (is_running(run_id) is False) and must not already have all three stages succeeded.\n    settings: Loaded via config.load_settings() if not given.\n\nReturns:\n    run_id, unchanged -- no new run row, no new id, parent_run_id is never written.\n\nRaises:\n    PipelineError: If run_id is unknown, is currently registered as running, or has all three run_stages rows already 'succeeded'.\n\nSequence:\n    1. with storage.connect(db_path) as conn: run = storage.get_run(conn, run_id); raise PipelineError if None. If is_running(run_id): raise PipelineError. stages = storage.read_run_stages(conn, run_id); succeeded = {s.stage for s in stages if s.status == 'succeeded'}; if succeeded == {'acquisition','enrichment','analysis'}: raise PipelineError (all done, a new run is the right action instead). start_stage = the first PipelineStage, in pipeline order, not in succeeded. resumed_config = PipelineConfig.from_dict(run.config) with start_stage replaced by the computed value.\n    2. From here, identical to start_pipeline_async's steps 4-6 (register cancellation, start worker, return run_id), EXCEPT no storage.create_run call -- the existing run row is reused, and its status is set to 'running' by the worker's first begin_run_stage call, not by resume_run itself.\n    3. The ADR-013 consistency check still runs inside the worker's run_pipeline call, even though this is a resume -- a resume against a hand-edited parameters.toml must still be caught, not silently allowed to continue with stale-vs-current parameters mismatched.\n",
+  "preconditions": [
+    "run_id exists in runs",
+    "is_running(run_id) is False",
+    "Not all three run_stages rows for run_id are 'succeeded'"
+  ],
+  "postconditions": [
+    "The returned run_id equals the input run_id exactly",
+    "runs.parent_run_id for this run_id is unchanged (still whatever it was before, typically NULL)",
+    "No new row is added to runs by this call",
+    "The worker resumes from the first stage, in pipeline order, that is not 'succeeded' -- a stage that never started and a stage that started-then-failed are both eligible resume points"
+  ],
+  "edge_cases": [
+    {"input": "All three stages succeeded", "expected_behavior": "PipelineError -- 'the user wants a new run, which is a different action' (module spec's own wording)"},
+    {"input": "run_id currently has a live worker (another tab already resumed it)", "expected_behavior": "PipelineError, no second worker started -- prevents the two-workers-for-one-run_id case the module spec calls 'impossible by construction'"},
+    {"input": "No stage has ever been attempted (crashed during preflight originally, so run_stages is empty)", "expected_behavior": "resumes from acquisition -- the normal path after a crash before any stage began"},
+    {"input": "acquisition succeeded, enrichment failed, analysis never attempted", "expected_behavior": "resumes from enrichment"},
+    {"input": "parameters.toml changed since the original run", "expected_behavior": "not blocked here -- the ADR-013 check inside the resumed run_pipeline call is what validates this; if it still passes (parameters.toml still matches FORMULATION.md, just different locked values than the original run used), the resumed stages are stamped with the CURRENT parameters_version, and a warning run_event is appended noting the run now spans two parameters_version values across its rows"},
+    {"input": "run_id unknown", "expected_behavior": "PipelineError naming the unknown run_id"}
+  ],
+  "unit_tests": [
+    {"name": "test_resume_picks_first_non_succeeded_stage", "description": "Table-driven over all meaningful combinations of the three stages' statuses (none attempted; acquisition succeeded only; acquisition+enrichment succeeded; acquisition succeeded+enrichment failed), asserting the correct start_stage each time.", "inputs": {"stage_statuses": "[('acquisition','succeeded'), ('enrichment','failed')]"}, "expected": "start_stage == PipelineStage.ENRICHMENT"},
+    {"name": "test_resume_all_succeeded_raises", "description": "A run with all three stages succeeded raises PipelineError.", "inputs": {}, "expected": "PipelineError"},
+    {"name": "test_resume_already_running_raises", "description": "Calling resume_run while is_running(run_id) is True raises PipelineError and starts no second worker.", "inputs": {}, "expected": "PipelineError, active_run_ids() count unchanged"},
+    {"name": "test_resume_unknown_run_id_raises", "description": "resume_run for a nonexistent run_id raises PipelineError.", "inputs": {"run_id": "does-not-exist"}, "expected": "PipelineError"},
+    {"name": "test_resume_returns_same_run_id_no_new_row", "description": "resume_run's return value equals the input run_id, and storage.list_runs shows no additional row.", "inputs": {}, "expected": "returned run_id == input; run count unchanged"},
+    {"name": "test_resume_makes_no_further_http_call_for_already_fetched_appids", "description": "Integration: a run failed mid-acquisition, then resumed, fetches only the appids missing from raw_games for that run_id (asserted against a recording HTTP stub).", "inputs": {}, "expected": "HTTP calls only for previously-unfetched appids"}
+  ],
+  "dependencies": ["PipelineConfig", "PipelineStage", "PipelineError", "is_running", "storage.get_run", "storage.read_run_stages", "storage.connect"]
+}

@@ -1,0 +1,21 @@
+{
+  "module": "acquisition",
+  "function_name": "AcquisitionError",
+  "file_path": "src/steam_analyst/acquisition/errors.py",
+  "description": "Base exception for stage-fatal acquisition failures: bulk-catalog fetch failure, missing required API key, or any condition that means the acquisition stage as a whole cannot produce a usable candidate set.",
+  "signature": "class AcquisitionError(Exception): ...",
+  "docstring": "Stage-fatal acquisition failure.\n\nRaised for: a persistent bulk-catalog page failure (fetch_steamspy_catalog), a missing STEAM_WEB_API_KEY where a called endpoint requires one, or any other condition where continuing the stage would produce a meaningless partial result. NOT raised for an individual candidate's failed appdetails or review fetch -- those are recorded and counted (detail_failed / reviews_failed), never raised, per the module's core invariant that a per-app failure degrades that app, not the run.\n",
+  "preconditions": [],
+  "postconditions": [
+    "An AcquisitionError propagating out of run_acquisition results in the run's status being set to 'failed' with error_message populated from str(the exception), via orchestration's exception-to-terminal-status translation"
+  ],
+  "edge_cases": [
+    {"input": "STEAM_WEB_API_KEY is unset and a call requiring it is about to be made", "expected_behavior": "AcquisitionError raised before any request is issued, per the module's edge case 'Missing STEAM_WEB_API_KEY where required'"},
+    {"input": "SteamSpy bulk endpoint is unreachable for the whole run (DNS failure on every page)", "expected_behavior": "AcquisitionError propagates out of fetch_steamspy_catalog / run_acquisition rather than yielding an empty candidate set silently"}
+  ],
+  "unit_tests": [
+    {"name": "test_missing_api_key_raises_before_any_request", "description": "run_acquisition with settings.steam_web_api_key=None and a config that requires it raises AcquisitionError with zero HTTP calls made.", "inputs": {}, "expected": "AcquisitionError, 0 requests recorded"},
+    {"name": "test_persistent_bulk_failure_raises", "description": "A stubbed transport failing every bulk-page request raises AcquisitionError.", "inputs": {}, "expected": "AcquisitionError"}
+  ],
+  "dependencies": []
+}

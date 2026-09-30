@@ -1,0 +1,44 @@
+# ============================================================
+# steam-analyst .gitignore
+# See .claude/context/ARCHITECTURE.md for the module layout this maps to.
+# ============================================================
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+conda-env/
+
+# Secrets — never commit real API keys (see ADR-010, .env.example is the committed template)
+.env
+.env.*
+!.env.example
+
+# Run persistence (SQLite) — grows unbounded with raw payload cache, per ADR-001/ADR-005
+data/analyses.db
+data/analyses.db-wal
+data/analyses.db-shm
+
+# Claude Code session state (not project data)
+.claude/context/context.db
+.claude/context/context.db-wal
+.claude/context/context.db-shm
+.claude/context/sync.log
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

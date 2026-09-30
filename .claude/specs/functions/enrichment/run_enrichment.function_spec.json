@@ -1,0 +1,26 @@
+{
+  "module": "enrichment",
+  "function_name": "run_enrichment",
+  "file_path": "src/steam_analyst/enrichment/pipeline.py",
+  "description": "Stage entry point called by orchestration. Reads raw_games, calls build_enriched_frame, writes games_enriched and game_tags, emits progress events.",
+  "signature": "def run_enrichment(conn: sqlite3.Connection, run_id: str, params: EnrichmentParams, *, parameters_version: str, on_event: EventSink) -> EnrichmentReport",
+  "docstring": "Run the full enrichment stage for one run.\n\nArgs:\n    conn: An open storage connection.\n    run_id: The run to enrich; acquisition must have already completed (or at least written some raw_games rows) for this to produce anything.\n    params: EnrichmentParams.\n    parameters_version: config.parameters_version(...) for the parameters.toml in effect; stamped onto every written row.\n    on_event: Progress/log sink.\n\nReturns:\n    An EnrichmentReport summarizing the stage.\n\nSteps:\n    1. Emit 'stage_start'.\n    2. bundle = parse_raw_bundle(conn, run_id); catalog = acquisition.build_catalog_frame(storage.read_raw_payloads(conn, run_id, 'steamspy_all')) (re-flattened from storage rather than re-fetched, per ADR-005's 'enrichment and analysis read only from the database').\n    3. enriched_frame, tag_rows = build_enriched_frame(bundle, catalog, params).\n    4. enriched_frame['parameters_version'] = parameters_version.\n    5. storage.write_enriched(conn, run_id, enriched_frame); storage.write_tags(conn, run_id, tag_rows).\n    6. Assemble and return EnrichmentReport from counts gathered during steps 2-3, emit 'stage_complete'.\n\nRaises:\n    EnrichmentError: If run_id does not exist, or if raw_games has zero steamspy_all rows for the run (acquisition never completed even its bulk stage -- enrichment cannot proceed without the full catalog for developer-catalog-size lookups).\n",
+  "preconditions": [
+    "run_id exists",
+    "raw_games has at least the steamspy_all rows for run_id"
+  ],
+  "postconditions": [
+    "games_enriched and game_tags for run_id exactly reflect build_enriched_frame's output after a successful call (via storage.write_enriched / write_tags's replace-transactionally semantics)",
+    "Re-running run_enrichment for the same run_id (e.g. after an EnrichmentParams change) replaces prior rows and is idempotent for identical parameters, per the module's own invariant"
+  ],
+  "edge_cases": [
+    {"input": "raw_games has zero steamspy_all rows for run_id", "expected_behavior": "EnrichmentError -- cannot proceed without the bulk catalog"},
+    {"input": "Candidate set is empty (acquisition's coarse filter admitted zero apps)", "expected_behavior": "stage succeeds, writes zero rows to games_enriched and game_tags, per the module's own edge case"},
+    {"input": "Called a second time for a run_id with a changed EnrichmentParams (e.g. after freeze_empirical_parameters.py updated complexity_bounds)", "expected_behavior": "fully replaces the prior games_enriched/game_tags rows and stamps the new parameters_version; the OLD parameters_version rows are gone, not retained alongside, since games_enriched's primary key is (run_id, appid), not (run_id, appid, parameters_version) -- re-running enrichment for a run always means overwriting, not versioning within a run"}
+  ],
+  "unit_tests": [],
+  "dependencies": ["parse_raw_bundle", "build_enriched_frame", "EnrichmentReport", "EnrichmentError"],
+  "integration_tests": [
+    {"name": "test_run_enrichment_over_fixture_db_produces_expected_tables", "description": "Against tests/fixtures with a populated raw_games table, run_enrichment produces the expected games_enriched and game_tags contents, per the module's own integration test.", "inputs": {}, "expected": "games_enriched/game_tags match expected fixture content"}
+  ]
+}

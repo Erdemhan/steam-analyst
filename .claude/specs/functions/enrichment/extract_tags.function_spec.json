@@ -1,0 +1,30 @@
+{
+  "module": "enrichment",
+  "function_name": "extract_tags",
+  "file_path": "src/steam_analyst/enrichment/parsing.py",
+  "description": "Normalizes SteamSpy's per-app tag:votes dict (already present in the bulk payload, per the confirmed resolution that a separate steamspy_appdetails fetch is not used) into (appid, tag, votes, rank) rows for game_tags.",
+  "signature": "def extract_tags(bundle: RawBundle, *, max_tags_per_game: int, min_votes: int) -> list[TagRow]",
+  "docstring": "Extract tag rows from bundle.steamspy's 'tags' field.\n\nArgs:\n    bundle: Output of parse_raw_bundle.\n    max_tags_per_game: Cap on tags retained per app, keeping only the top-voted max_tags_per_game tags.\n    min_votes: Tags with votes below this are dropped entirely (not just deprioritized) -- this is a pre-clustering vote floor, distinct from AnalysisParams.min_tag_votes which is applied again inside analysis.cluster_tags for its own purposes; here it primarily controls game_tags table size.\n\nReturns:\n    A list of TagRow(appid, tag, votes, rank), rank being the tag's 1-based position within that app's tags after sorting by votes descending (ties broken alphabetically by tag name for determinism).\n\nNote:\n    SteamSpy's 'tags' field is sometimes a dict {tag: votes} and sometimes (for apps with very little data) an empty list []; both are handled uniformly, the list case producing zero TagRow entries for that appid.\n",
+  "preconditions": [
+    "max_tags_per_game >= 1",
+    "min_votes >= 0"
+  ],
+  "postconditions": [
+    "No appid contributes more than max_tags_per_game TagRow entries",
+    "No TagRow has votes < min_votes",
+    "Within one appid's tags, rank values are unique and contiguous starting at 1"
+  ],
+  "edge_cases": [
+    {"input": "tags field is an empty list []", "expected_behavior": "zero TagRow entries for that appid, not an error"},
+    {"input": "tags field is a dict with a tag having votes=0", "expected_behavior": "dropped if min_votes > 0; kept with rank assigned if min_votes == 0"},
+    {"input": "Two tags tie on vote count", "expected_behavior": "ranked by alphabetical tag name as the deterministic tiebreak"},
+    {"input": "An appid absent from bundle.steamspy entirely (should not happen per RawBundle's postcondition)", "expected_behavior": "not iterated; extract_tags only processes appids present in bundle.steamspy"}
+  ],
+  "unit_tests": [
+    {"name": "test_extract_tags_respects_max_per_game", "description": "An app with 20 tags and max_tags_per_game=10 yields exactly the top 10 by votes.", "inputs": {"max_tags_per_game": 10}, "expected": "10 TagRow entries for that appid, ranks 1-10"},
+    {"name": "test_extract_tags_drops_below_min_votes", "description": "A tag with votes=2 and min_votes=5 is excluded.", "inputs": {"min_votes": 5}, "expected": "that tag absent from the result"},
+    {"name": "test_extract_tags_empty_list_input", "description": "An appid with tags=[] produces zero rows.", "inputs": {}, "expected": "0 TagRow for that appid"},
+    {"name": "test_extract_tags_tie_break_alphabetical", "description": "Two tags with equal votes are ranked alphabetically.", "inputs": {}, "expected": "the alphabetically earlier tag has the lower rank number"}
+  ],
+  "dependencies": ["RawBundle"]
+}

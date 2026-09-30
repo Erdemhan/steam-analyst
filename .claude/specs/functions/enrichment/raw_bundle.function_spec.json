@@ -1,0 +1,21 @@
+{
+  "module": "enrichment",
+  "function_name": "RawBundle",
+  "file_path": "src/steam_analyst/enrichment/parsing.py",
+  "description": "Grouped view of a run's raw_games rows, per appid, across the three sources enrichment actually consumes (steamspy_all, steam_appdetails, steam_reviews). steamspy_appdetails is intentionally absent -- confirmed resolution: tags and per-app SteamSpy detail are sourced from the bulk steamspy_all payload only.",
+  "signature": "@dataclass(frozen=True)\nclass RawBundle:\n    run_id: str\n    steamspy: dict[int, dict]\n    appdetails: dict[int, dict]\n    reviews: dict[int, dict]",
+  "docstring": "Per-appid raw payload groups for one run.\n\nAttributes:\n    run_id: The run these payloads belong to.\n    steamspy: appid -> the app's SteamSpy bulk record (from source='steamspy_all').\n    appdetails: appid -> the app's {\"success\":..., \"data\":{...}} Steam appdetails payload (from source='steam_appdetails'). Keys are the candidate appids only (appdetails is never fetched for non-candidates).\n    reviews: appid -> the app's review-summary payload (from source='steam_reviews').\n\nAn appid present in `steamspy` but absent from `appdetails`/`reviews` means that per-app fetch failed or was never attempted (e.g. the app was excluded by the coarse filter, or its detail fetch failed and only a transport-error stub was persisted).\n",
+  "preconditions": [],
+  "postconditions": [
+    "Every key in appdetails and reviews is also a key in steamspy (candidates are always a subset of the full bulk catalog by construction)",
+    "Values are the raw parsed JSON dicts exactly as persisted, with no normalization applied yet"
+  ],
+  "edge_cases": [
+    {"input": "An appid present in appdetails with payload {'<appid>': {'success': false}}", "expected_behavior": "retained as-is; normalize_features is responsible for interpreting success=false as a dropped row"},
+    {"input": "An appid with no reviews entry at all (fetch never attempted or lost)", "expected_behavior": "simply absent from the reviews dict; normalize_features must handle a missing key, not assume every appdetails key has a matching reviews key"}
+  ],
+  "unit_tests": [
+    {"name": "test_bundle_grouping_from_fixture", "description": "tests/fixtures/raw_bundle_small.json produces a RawBundle whose three dicts have the expected key sets and content.", "inputs": {}, "expected": "steamspy/appdetails/reviews dicts matching the fixture"}
+  ],
+  "dependencies": []
+}

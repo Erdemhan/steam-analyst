@@ -1,0 +1,117 @@
+{
+  "123456": {
+    "success": true,
+    "data": {
+      "type": "game",
+      "name": "Test Game Title",
+      "steam_appid": 123456,
+      "required_age": 0,
+      "is_free": false,
+      "controller_support": "full",
+      "dlc": [
+        111111,
+        111112
+      ],
+      "detailed_description": "This is a test game.",
+      "about_the_game": "A detailed description of the test game.",
+      "short_description": "A test game",
+      "supported_languages": "English<strong>*</strong>, French, German",
+      "reviews": "Overwhelmingly Positive",
+      "header_image": "https://example.test/header.jpg",
+      "website": "https://example.test",
+      "pc_requirements": {
+        "minimum": "OS: Windows 7 64-bit",
+        "recommended": "OS: Windows 10 64-bit"
+      },
+      "mac_requirements": [],
+      "linux_requirements": [],
+      "legal_notice": "Copyright notice",
+      "developers": ["Test Developer"],
+      "publishers": ["Test Publisher"],
+      "price_overview": {
+        "currency": "USD",
+        "initial": 1999,
+        "final": 1999,
+        "discount_percent": 0,
+        "initial_formatted": "$19.99",
+        "final_formatted": "$19.99"
+      },
+      "packages": [123456],
+      "package_groups": [
+        {
+          "name": "default",
+          "title": "Buy Test Game Title",
+          "description": "",
+          "selection_text": "Select a purchase option",
+          "save_text": "",
+          "display_type": 0,
+          "is_recurring_subscription": "false",
+          "subs": [
+            {
+              "packageid": 123456,
+              "percent_savings_text": "",
+              "percent_savings": 0,
+              "option_text": "Test Game Title - $19.99",
+              "option_description": "",
+              "can_get_free_license": "0",
+              "is_free_license": false,
+              "price_in_cents_with_wallet_credit": 1999
+            }
+          ]
+        }
+      ],
+      "platforms": {
+        "windows": true,
+        "mac": false,
+        "linux": false
+      },
+      "metacritic": {
+        "score": 75,
+        "url": "https://example.test/metacritic"
+      },
+      "categories": [
+        {
+          "id": 2,
+          "description": "Single-player"
+        },
+        {
+          "id": 1,
+          "description": "Multi-player"
+        }
+      ],
+      "genres": [
+        {
+          "id": "1",
+          "description": "Action"
+        }
+      ],
+      "screenshots": [
+        {
+          "id": 0,
+          "path_thumbnail": "https://example.test/thumb.jpg",
+          "path_full": "https://example.test/full.jpg"
+        }
+      ],
+      "movies": [],
+      "recommendations": {
+        "total": 50
+      },
+      "achievements": {
+        "total": 25
+      },
+      "release_date": {
+        "coming_soon": false,
+        "date": "01 Jan, 2023"
+      },
+      "support_info": {
+        "url": "https://example.test/support",
+        "email": "support@example.test"
+      },
+      "background": "https://example.test/bg.jpg",
+      "content_descriptors": {
+        "ids": [],
+        "notes": null
+      }
+    }
+  }
+}

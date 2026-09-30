@@ -1,0 +1,24 @@
+{
+  "module": "storage",
+  "function_name": "read_analysis_result",
+  "file_path": "src/steam_analyst/storage/analysis_results.py",
+  "description": "Reads one analysis_results payload for a run and analysis_type.",
+  "signature": "def read_analysis_result(conn: sqlite3.Connection, run_id: str, analysis_type: str) -> dict | None",
+  "docstring": "Read one analysis result blob.\n\nArgs:\n    conn: An open connection.\n    run_id: The run to read.\n    analysis_type: One of the seven allowed analysis_type values.\n\nReturns:\n    The deserialized payload dict, or None if no row exists for that (run_id, analysis_type) pair (e.g. the analysis stage has not run yet, or failed before writing this particular result type).\n",
+  "preconditions": [],
+  "postconditions": [
+    "Returns None rather than raising for a missing (run_id, analysis_type) pair",
+    "The returned dict is a fresh deserialization each call (mutating the returned dict never affects the stored row)"
+  ],
+  "edge_cases": [
+    {"input": "(run_id, analysis_type) pair not present", "expected_behavior": "returns None"},
+    {"input": "run_id unknown entirely", "expected_behavior": "returns None (same as a known run missing that analysis_type; storage does not distinguish 'run does not exist' from 'result not yet computed' at this call -- reporting.load_run_report is responsible for that distinction using get_run)"},
+    {"input": "Caller mutates the returned dict", "expected_behavior": "no effect on the stored payload_json; a second read_analysis_result call returns the original, unmutated content"}
+  ],
+  "unit_tests": [
+    {"name": "test_read_existing_result", "description": "A result written via write_analysis_result is read back identically.", "inputs": {"analysis_type": "tag_summary"}, "expected": "matching dict"},
+    {"name": "test_missing_result_returns_none", "description": "An analysis_type never written for this run returns None.", "inputs": {"analysis_type": "case_studies"}, "expected": "None"},
+    {"name": "test_mutation_of_returned_dict_does_not_persist", "description": "Mutating the returned dict and re-reading shows the original content.", "inputs": {}, "expected": "second read equals the originally written payload"}
+  ],
+  "dependencies": []
+}

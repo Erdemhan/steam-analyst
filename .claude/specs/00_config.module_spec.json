@@ -1,0 +1,139 @@
+{
+  "module_id": "config",
+  "spec_version": "0.1.0",
+  "status": "planned",
+  "package_path": "src/steam_analyst/config",
+  "responsibility": "Load, validate and expose all runtime settings: secrets from the environment and tunable parameters from config/parameters.toml. Provides typed parameter objects to every other module so that no numeric constant is ever hard-coded in logic.",
+  "dependencies": {
+    "internal": [],
+    "external": ["python-dotenv", "tomllib (stdlib, Python >= 3.11)"]
+  },
+  "public_interface": [
+    {
+      "name": "Settings",
+      "kind": "dataclass",
+      "fields": [
+        "db_path: Path",
+        "steam_web_api_key: str | None",
+        "http_timeout_seconds: float",
+        "user_agent: str",
+        "parameters_path: Path"
+      ],
+      "description": "Environment-derived settings. Never contains estimation constants."
+    },
+    {
+      "name": "AcquisitionConfig",
+      "kind": "dataclass",
+      "fields": [
+        "steamspy_page_delay_seconds: float",
+        "steam_requests_per_minute: float",
+        "max_retries: int",
+        "backoff_base_seconds: float",
+        "backoff_max_seconds: float",
+        "request_budget: int",
+        "coarse_filter: CoarseFilterCriteria"
+      ],
+      "description": "Rate limiting and funnel configuration for the acquisition stage."
+    },
+    {
+      "name": "CoarseFilterCriteria",
+      "kind": "dataclass",
+      "fields": [
+        "min_review_count: int",
+        "max_review_count: int | None",
+        "earliest_release_date: date | None",
+        "latest_release_date: date | None",
+        "include_free_to_play: bool",
+        "max_price_usd: float | None",
+        "publisher_blocklist: list[str]"
+      ],
+      "description": "Stage-one candidate selection band. Values locked in FORMULATION.md §0 (floor 25, no ceiling so max_review_count is None, 2020-01-01 release-date floor, publisher blocklist instead of a review-count ceiling); none may be defaulted inside code."
+    },
+    {
+      "name": "EnrichmentParams",
+      "kind": "dataclass",
+      "fields": [
+        "boxleiter_multipliers: dict[str, tuple[float, float, float]]",
+        "genre_bucket_map: dict[str, str]",
+        "storefront_cut: float",
+        "discount_factor: float",
+        "refund_regional_factor: float",
+        "complexity_weights: dict[str, float]",
+        "complexity_bounds: dict[str, tuple[float, float]]",
+        "simplicity_tags: list[str]",
+        "complexity_tags: list[str]",
+        "effort_epsilon: float",
+        "tag_extraction_max_per_game: int",
+        "tag_extraction_min_votes: int"
+      ],
+      "description": "Mirror of FORMULATION.md sections 2-5."
+    },
+    {
+      "name": "AnalysisParams",
+      "kind": "dataclass",
+      "fields": [
+        "simplicity_percentile: float",
+        "tag_distance_threshold: float | None",
+        "clustering_linkage: str",
+        "trailing_window_months: int",
+        "min_cluster_size: int",
+        "opportunity_weights: dict[str, float]",
+        "min_tag_votes: int",
+        "max_tags_per_game: int"
+      ],
+      "description": "Mirror of FORMULATION.md sections 3a and 6. tag_distance_threshold is None until scripts.freeze_empirical_parameters (ADR-012) computes it from run 1; clustering_linkage is locked to 'average' (FORMULATION.md §6). simplicity_percentile is locked to 0.40 (FORMULATION.md §3a), replacing an earlier max_complexity_score field that implied a fixed absolute threshold rather than a percentile."
+    },
+    {
+      "name": "load_settings",
+      "kind": "function",
+      "signature": "def load_settings(env_path: Path | None = None) -> Settings",
+      "description": "Reads .env and process environment. Missing STEAM_WEB_API_KEY is not fatal at load time; it is validated by the client that needs it."
+    },
+    {
+      "name": "load_parameters",
+      "kind": "function",
+      "signature": "def load_parameters(path: Path) -> tuple[AcquisitionConfig, EnrichmentParams, AnalysisParams]",
+      "description": "Parses config/parameters.toml and validates it. Raises ParameterError on any missing key, out-of-range value, or weight set that does not sum to 1."
+    },
+    {
+      "name": "parameters_version",
+      "kind": "function",
+      "signature": "def parameters_version(path: Path) -> str",
+      "description": "Stable short hash of the parameter file contents, stamped onto every derived row so a score can be traced to the constants that produced it."
+    },
+    {
+      "name": "ParameterError",
+      "kind": "exception",
+      "description": "Raised for any invalid or missing configuration value."
+    }
+  ],
+  "persistence": {"reads": ["config/parameters.toml", ".env"], "writes": []},
+  "invariants": [
+    "No estimation constant has a code-level default. A missing key is an error, never a silent fallback -- EXCEPT the two keys FORMULATION.md explicitly locks as optional-by-design: coarse_filter.max_review_count (locked to 'no ceiling', FORMULATION.md §0) and analysis.tag_distance_threshold (locked to 'unset until scripts.freeze_empirical_parameters runs', FORMULATION.md §6). TOML has no null literal, so these two keys are the ONLY ones load_parameters treats a missing key as None for; every other missing key is still ParameterError. This exception list is fixed and hard-coded in load_parameters, not inferred from a field's type annotation.",
+    "Weight dictionaries are validated to sum to 1.0 within a small tolerance.",
+    "Ratio-valued parameters (storefront_cut, discount_factor, refund_regional_factor) are validated to lie in [0, 1]."
+  ],
+  "edge_cases": [
+    "parameters.toml missing -> ParameterError with the expected path",
+    "parameters.toml present but a genre bucket lacks a multiplier triple -> ParameterError naming the bucket",
+    "multiplier triple not monotonically ordered (low <= mid <= high) -> ParameterError",
+    "db_path parent directory does not exist -> created on demand by storage, not by config",
+    "paths resolved via pathlib only; no hard-coded OS separators (development is Windows, execution may be elsewhere)"
+  ],
+  "testing": {
+    "unit": [
+      "load_parameters accepts a complete fixture file and returns populated dataclasses",
+      "load_parameters raises ParameterError for each of: missing section, missing key, out-of-range ratio, weights not summing to 1, unordered multiplier triple",
+      "parameters_version is stable across reads and changes when any value changes",
+      "load_settings falls back to process environment when no .env file exists"
+    ],
+    "fixtures": ["tests/fixtures/parameters_valid.toml", "tests/fixtures/parameters_invalid_*.toml"]
+  },
+  "non_goals": [
+    "Does not write or mutate parameters.toml",
+    "Does not read FORMULATION.md; the consistency check between the two is a separate startup assertion"
+  ],
+  "open_questions": [
+    "Should a parameters.toml / FORMULATION.md drift check run at startup and hard-fail, or warn in the UI only?"
+  ]
+}

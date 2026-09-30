@@ -1,0 +1,28 @@
+{
+  "module": "enrichment",
+  "function_name": "estimate_sales",
+  "file_path": "src/steam_analyst/enrichment/revenue.py",
+  "description": "Implements FORMULATION.md section 2 (Boxleiter method, three-bucket scheme, low/mid/high band).",
+  "signature": "def estimate_sales(review_count: pd.Series, genre_bucket: pd.Series, params: EnrichmentParams) -> pd.DataFrame",
+  "docstring": "Compute estimated sales bands.\n\nArgs:\n    review_count: r_i per appid.\n    genre_bucket: map_genre_bucket's output per appid.\n    params: EnrichmentParams.boxleiter_multipliers.\n\nReturns:\n    A DataFrame with columns estimated_sales_low, estimated_sales_mid, estimated_sales_high, computed as review_count * m_low/mid/high(genre_bucket) respectively.\n",
+  "preconditions": [
+    "review_count >= 0 for every row (0 is valid, e.g. a brand-new candidate with no reviews yet)",
+    "Every genre_bucket value has a corresponding entry in params.boxleiter_multipliers"
+  ],
+  "postconditions": [
+    "estimated_sales_low <= estimated_sales_mid <= estimated_sales_high for every row, per the module's own invariant (guaranteed structurally since the multiplier triple itself is validated ordered by config.validate_parameters)",
+    "review_count == 0 produces estimated_sales_low == mid == high == 0, per the module's edge case, not NaN"
+  ],
+  "edge_cases": [
+    {"input": "review_count == 0", "expected_behavior": "all three sales columns are exactly 0.0, row is kept (still informs competition density downstream)"},
+    {"input": "genre_bucket value not present in params.boxleiter_multipliers (should not happen if map_genre_bucket only ever returns the three known keys)", "expected_behavior": "raises EnrichmentError -- treated as a programmer-error / config-drift condition, not a normal data edge case"},
+    {"input": "review_count is very large (a breakout hit with hundreds of thousands of reviews)", "expected_behavior": "no ceiling applied here; the coarse filter's own 'no review-count ceiling' decision means this function must not silently cap the multiplication either"}
+  ],
+  "unit_tests": [
+    {"name": "test_reproduces_hand_computed_values", "description": "review_count=1000, bucket='mainstream' with multipliers (30,37,45) yields (30000, 37000, 45000), per the module's own testing requirement.", "inputs": {"review_count": 1000, "genre_bucket": "mainstream"}, "expected": "[30000.0, 37000.0, 45000.0]"},
+    {"name": "test_zero_reviews_yields_zero_sales", "description": "review_count=0 yields all-zero sales columns.", "inputs": {"review_count": 0}, "expected": "[0.0, 0.0, 0.0]"},
+    {"name": "test_ordering_low_mid_high_holds", "description": "For a batch of synthetic rows across all three buckets, low <= mid <= high always holds.", "inputs": {}, "expected": "monotonic ordering holds for every row"},
+    {"name": "test_unknown_bucket_raises", "description": "A genre_bucket value not in boxleiter_multipliers raises EnrichmentError.", "inputs": {"genre_bucket": "not_a_real_bucket"}, "expected": "EnrichmentError"}
+  ],
+  "dependencies": ["map_genre_bucket"]
+}

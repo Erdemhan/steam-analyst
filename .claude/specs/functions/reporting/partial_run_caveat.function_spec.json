@@ -1,0 +1,30 @@
+{
+  "module": "reporting",
+  "function_name": "partial_run_caveat",
+  "file_path": "src/steam_analyst/reporting/report.py",
+  "description": "Builds the one extra caveat the UI renders above a partial report's results, naming exactly which stages did not succeed and, for a failed run, the stored error message. Signature and severity rule are as declared in 05_reporting.module_spec.json's public_interface.",
+  "signature": "def partial_run_caveat(missing_stages: Sequence[str], run: RunRecord) -> Caveat",
+  "docstring": "Build the caveat describing why a report is partial.\n\nArgs:\n    missing_stages: The stages that did not succeed, in pipeline order. Never empty -- callers only invoke this when is_partial_run(...) is True.\n    run: The RunRecord for status and error_message.\n\nReturns:\n    A Caveat with key='partial_run', a title naming the run's status, a body listing missing_stages plus run.error_message when present, and severity: 'error' when run.status == 'failed', 'warning' when run.status in {'running', 'cancelled'} -- a run still in progress or deliberately stopped by the user is not itself a defect, unlike an outright failure.\n",
+  "preconditions": [
+    "missing_stages is non-empty"
+  ],
+  "postconditions": [
+    "The returned Caveat.body names every entry of missing_stages, in the order given",
+    "severity == 'error' if and only if run.status == 'failed'",
+    "When run.error_message is not None, it appears verbatim in the body; when it is None, no error-message line is added (never rendered as the literal string 'None')"
+  ],
+  "edge_cases": [
+    {"input": "missing_stages=[]", "expected_behavior": "raises ValueError -- calling this for a non-partial run is a caller bug; load_run_report only calls it when is_partial_run(stages) is True"},
+    {"input": "run.status == 'running', missing_stages=['analysis']", "expected_behavior": "severity='warning'; body states the run is still in progress and names 'analysis' as not yet complete; no error-message line"},
+    {"input": "run.status == 'failed', missing_stages=['enrichment', 'analysis'], run.error_message='enrichment: ValueError: bad row'", "expected_behavior": "severity='error'; body names both missing stages and includes the error_message verbatim"},
+    {"input": "run.status == 'cancelled', run.error_message is None", "expected_behavior": "severity='warning'; body states the run was cancelled and lists missing_stages; no error-message line"},
+    {"input": "run.status == 'succeeded' but missing_stages is non-empty (should not occur given ADR-016, but not structurally prevented if a caller passes mismatched arguments)", "expected_behavior": "not specially guarded against; falls through to the 'warning' branch since 'succeeded' is not 'failed' -- callers must not construct this combination"}
+  ],
+  "unit_tests": [
+    {"name": "test_running_severity_and_wording", "description": "A running, partial run produces severity='warning' and a body naming the missing stage without an error-message line.", "inputs": {"missing_stages": ["analysis"], "run": {"status": "running", "error_message": null}}, "expected": "severity == 'warning'; body contains 'analysis'; 'None' not in body"},
+    {"name": "test_failed_severity_and_error_message", "description": "A failed run's caveat has severity='error' and includes the stored error_message verbatim.", "inputs": {"missing_stages": ["enrichment", "analysis"], "run": {"status": "failed", "error_message": "enrichment: ValueError: bad row"}}, "expected": "severity == 'error'; body contains 'enrichment: ValueError: bad row'"},
+    {"name": "test_cancelled_severity_is_warning", "description": "A cancelled run's caveat has severity='warning', not 'error'.", "inputs": {"missing_stages": ["analysis"], "run": {"status": "cancelled", "error_message": null}}, "expected": "severity == 'warning'"},
+    {"name": "test_empty_missing_stages_raises", "description": "Calling with an empty missing_stages list raises ValueError.", "inputs": {"missing_stages": [], "run": {"status": "running", "error_message": null}}, "expected": "ValueError"}
+  ],
+  "dependencies": ["Caveat", "storage.RunRecord"]
+}

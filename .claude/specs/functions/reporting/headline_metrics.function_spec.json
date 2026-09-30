@@ -1,0 +1,23 @@
+{
+  "module": "reporting",
+  "function_name": "headline_metrics",
+  "file_path": "src/steam_analyst/reporting/report.py",
+  "description": "Small summary dict for the Past Analyses run list: catalog size, candidate count, simple subset size, top archetype label, run duration.",
+  "signature": "def headline_metrics(report: RunReport) -> dict[str, Any]",
+  "docstring": "Extract a small headline summary from a RunReport.\n\nArgs:\n    report: A RunReport (typically the same instance being assembled by load_run_report, before this function's own output is folded back into report.headline_metrics -- see RunReport's own note on this slight circularity, resolved by load_run_report computing this function's result BEFORE constructing the final RunReport and passing it in as the headline_metrics field).\n\nReturns:\n    {'catalog_size': int, 'candidate_count': int, 'simple_subset_size': int, 'top_archetype_label': str | None, 'top_opportunity_score': float | None, 'run_duration_seconds': float | None, 'status': str}. top_archetype_label/top_opportunity_score are None when opportunity_matrix is empty (no scored archetypes). run_duration_seconds is None when the run has not finished (finished_at is None).\n",
+  "preconditions": [],
+  "postconditions": [
+    "Never raises for a RunReport with empty frames; returns None for the fields that cannot be computed rather than raising or fabricating a value"
+  ],
+  "edge_cases": [
+    {"input": "report.opportunity_matrix is empty", "expected_behavior": "top_archetype_label=None, top_opportunity_score=None"},
+    {"input": "report.run.finished_at is None (still running)", "expected_behavior": "run_duration_seconds=None"},
+    {"input": "A completed run with a well-formed opportunity_matrix", "expected_behavior": "top_archetype_label/top_opportunity_score reflect the highest-opportunity_score row"}
+  ],
+  "unit_tests": [
+    {"name": "test_headline_metrics_for_completed_run", "description": "A fully populated fixture RunReport yields the expected top archetype and duration.", "inputs": {}, "expected": "matches the fixture's known top archetype and duration"},
+    {"name": "test_headline_metrics_for_empty_opportunity_matrix", "description": "An empty opportunity_matrix yields None for both top-archetype fields without raising.", "inputs": {}, "expected": "top_archetype_label is None, top_opportunity_score is None"},
+    {"name": "test_headline_metrics_for_unfinished_run", "description": "A run with finished_at=None yields run_duration_seconds=None.", "inputs": {}, "expected": "run_duration_seconds is None"}
+  ],
+  "dependencies": ["RunReport"]
+}

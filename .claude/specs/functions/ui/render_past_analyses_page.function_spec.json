@@ -1,0 +1,30 @@
+{
+  "module": "ui",
+  "function_name": "render_past_analyses_page",
+  "file_path": "src/steam_analyst/ui/pages.py",
+  "description": "The run history browser -- the whole reason runs are persisted rather than being throwaway snapshots.",
+  "signature": "def render_past_analyses_page(conn: sqlite3.Connection, settings: Settings) -> None",
+  "docstring": "Render the list of past and current runs.\n\nArgs:\n    conn: This page's own short-lived connection.\n    settings: For settings.db_path, passed to any button action that needs orchestration (which takes a Path, never a connection).\n\nBehavior:\n    - runs_df = storage.list_runs(conn, limit=50) (the module spec's open question about pagination vs a 50-cap is resolved here as a fixed 50-row cap for v1 -- simplest option, revisit only if it proves insufficient in practice).\n    - Table columns: run_id, started_at, status, per-stage completion (from a join against run_stages, e.g. '2/3 succeeded'), headline metrics (candidate_count, simple_subset_size where available), duration.\n    - Per row: Open button (sets st.query_params['run_id'] = that row's run_id and switches to the Analysis Detail page); Resume button, rendered ONLY when status != 'succeeded' AND run_id not in orchestration.active_run_ids() -- calls orchestration.resume_run(settings.db_path, run_id, settings=settings) and then behaves like a fresh Start (sets the three SESSION_KEYS and shows the progress panel); Delete button behind a two-step confirmation (storage.delete_run cascades irreversibly, per the module's own edge case), calling storage.delete_run(conn, run_id) only after the second explicit confirmation click.\n",
+  "preconditions": [],
+  "postconditions": [
+    "Resume is never rendered for a run with status == 'succeeded'",
+    "Resume is never rendered for a run currently in orchestration.active_run_ids()",
+    "Delete never executes on a single click -- a second, explicit confirmation is always required first"
+  ],
+  "edge_cases": [
+    {"input": "orchestration.resume_run raises PipelineError (e.g. another tab resumed it a moment earlier)", "expected_behavior": "rendered as an inline warning on this page, not an uncaught exception, per the ui module spec's own edge case"},
+    {"input": "More than 50 runs exist", "expected_behavior": "only the most recent 50 are shown; no pagination control in v1"},
+    {"input": "Delete confirmed on a run that has a live worker (should not normally be possible since Resume/Delete visibility rules should prevent reaching this state, but defensively)", "expected_behavior": "storage.delete_run does not itself check for a live worker; the UI is responsible for not offering Delete for an active run_id, mirroring the Resume-visibility rule"},
+    {"input": "The table is opened immediately after reconcile_orphaned_runs marked several runs failed at startup", "expected_behavior": "those runs show status='failed' with Resume available, exactly as if they had failed for any other reason -- no special-cased 'orphaned' status or styling"}
+  ],
+  "unit_tests": [
+    {"name": "test_resume_hidden_for_succeeded_run", "description": "A row with status='succeeded' shows no Resume button.", "inputs": {}, "expected": "Resume absent"},
+    {"name": "test_resume_hidden_for_active_run", "description": "A row whose run_id is in active_run_ids() shows no Resume button even though status='running'.", "inputs": {}, "expected": "Resume absent"},
+    {"name": "test_resume_shown_for_failed_inactive_run", "description": "A row with status='failed' and not in active_run_ids() shows Resume.", "inputs": {}, "expected": "Resume present"},
+    {"name": "test_delete_requires_two_clicks", "description": "A single Delete click does not call storage.delete_run; a second confirming click does.", "inputs": {}, "expected": "delete_run called 0 times after first click, 1 time after confirmation"},
+    {"name": "test_open_sets_query_param_and_switches_page", "description": "Clicking Open for a row sets st.query_params['run_id'] to that row's run_id.", "inputs": {}, "expected": "query_params['run_id'] == the row's run_id"},
+    {"name": "test_resume_failure_shown_inline", "description": "A stubbed resume_run raising PipelineError results in an inline warning, no uncaught exception.", "inputs": {}, "expected": "no exception; warning text rendered"},
+    {"name": "test_limited_to_fifty_rows", "description": "With 75 fixture runs, exactly 50 most-recent rows are rendered.", "inputs": {}, "expected": "50 rows shown, newest first"}
+  ],
+  "dependencies": ["storage.list_runs", "storage.delete_run", "orchestration.resume_run", "orchestration.active_run_ids", "SESSION_KEYS"]
+}

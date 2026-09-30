@@ -1,0 +1,30 @@
+{
+  "module": "analysis",
+  "function_name": "compute_competition_density",
+  "file_path": "src/steam_analyst/analysis/scoring.py",
+  "description": "Release count per archetype inside the trailing window, adjusted for overall catalog growth so a rising tide is not read as rising competition.",
+  "signature": "def compute_competition_density(frame: pd.DataFrame, assignments: pd.DataFrame, params: AnalysisParams) -> pd.DataFrame",
+  "docstring": "Compute per-archetype competition density.\n\nArgs:\n    frame: The full enriched frame (see compute_demand's docstring for why the full frame, not the simplicity-filtered subset, is used).\n    assignments: cluster_tags' output.\n    params: AnalysisParams.trailing_window_months.\n\nReturns:\n    A DataFrame indexed by cluster_id with columns: n_games, releases_in_window (raw count), catalog_growth_adjusted_share (releases_in_window / total_candidate_releases_in_window, i.e. the archetype's SHARE of all windowed releases across the whole candidate set -- this is this spec's concrete resolution of FORMULATION.md's qualitative 'adjusted for catalog growth').\n\nJUDGMENT CALL / AMBIGUITY (flag to user): 04_analysis.module_spec.json's own open_questions explicitly lists this as unresolved: 'Catalog-growth adjustment for competition density: normalize by total releases in the same window, or by a fitted growth curve.' FORMULATION.md section 6 only says K_k = z(count of releases in k within W, adjusted for catalog growth) without specifying which. This spec adopts the simpler of the two named alternatives -- normalizing an archetype's release count by the TOTAL number of candidate-set releases in the same window (a share-of-catalog measure) -- rather than a fitted growth curve, because a share-based normalization requires no additional model-fitting assumptions and is directly interpretable ('this archetype was X% of all releases in the window'), whereas a fitted growth curve introduces its own unvalidated functional-form choice. This is a genuine, still-open modeling decision, not a locked value, and should be confirmed (or overridden) before worker-coder implementation.\n",
+  "preconditions": [
+    "frame has release_date_parsed",
+    "params.trailing_window_months > 0"
+  ],
+  "postconditions": [
+    "sum of releases_in_window across ALL archetypes (scored or not) equals the total count of candidate-set games with a parseable release date in the window",
+    "catalog_growth_adjusted_share values across all archetypes sum to 1.0 (within floating-point tolerance), since it is a share of one fixed total"
+  ],
+  "edge_cases": [
+    {"input": "A synthetic two-year catalog where total releases doubled year-over-year but one archetype's absolute count stayed flat", "expected_behavior": "that archetype's catalog_growth_adjusted_share roughly halves even though its raw releases_in_window is unchanged, correctly reflecting reduced RELATIVE competition despite flat absolute competition, per the module's own testing requirement"},
+    {"input": "An archetype with zero windowed releases", "expected_behavior": "does not appear as a row (same convention as compute_demand)"},
+    {"input": "Total candidate-set windowed releases is 0 (degenerate/empty run)", "expected_behavior": "returns an empty DataFrame rather than dividing by zero"}
+  ],
+  "unit_tests": [
+    {"name": "test_catalog_growth_normalization_on_synthetic_catalog", "description": "As described in the module's own testing requirement: a synthetic two-year catalog with known growth is normalized as specified.", "inputs": {}, "expected": "catalog_growth_adjusted_share reflects the archetype's relative, not absolute, standing"},
+    {"name": "test_shares_sum_to_one", "description": "Across all archetypes, catalog_growth_adjusted_share sums to 1.0.", "inputs": {}, "expected": "sum ~= 1.0"},
+    {"name": "test_empty_window_returns_empty_frame", "description": "Zero total windowed releases returns an empty result, not a division error.", "inputs": {}, "expected": "empty DataFrame"}
+  ],
+  "dependencies": ["compute_zscore"],
+  "open_questions": [
+    "Catalog-growth adjustment method for K_k is not locked in FORMULATION.md; this spec assumes share-of-total-releases normalization rather than a fitted growth curve. Needs explicit confirmation."
+  ]
+}

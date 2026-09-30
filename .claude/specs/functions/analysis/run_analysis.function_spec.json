@@ -1,0 +1,26 @@
+{
+  "module": "analysis",
+  "function_name": "run_analysis",
+  "file_path": "src/steam_analyst/analysis/pipeline.py",
+  "description": "Stage entry point called by orchestration. Reads games_enriched and game_tags, writes analysis_results rows of type opportunity_matrix, tag_summary, tag_clusters, tag_trends and competition_density.",
+  "signature": "def run_analysis(conn: sqlite3.Connection, run_id: str, params: AnalysisParams, *, parameters_version: str, on_event: EventSink) -> AnalysisReport",
+  "docstring": "Run the full analysis stage for one run.\n\nArgs:\n    conn: An open storage connection.\n    run_id: The run to analyze; enrichment must have already completed.\n    params: AnalysisParams.\n    parameters_version: Stamped onto every written analysis_results row.\n    on_event: Progress/log sink.\n\nReturns:\n    An AnalysisReport summarizing the stage.\n\nSteps:\n    1. frame = storage.read_enriched(conn, run_id); tags = storage.read_tags(conn, run_id, min_votes=params.min_tag_votes).\n    2. buildable, simplicity_rejected = apply_simplicity_filter(frame, params).\n    3. cluster_result = cluster_tags(tags, frame, params); storage.write_analysis_result(..., 'tag_clusters', ...).\n    4. demand = compute_demand(frame, cluster_result.assignments, params); competition = compute_competition_density(frame, cluster_result.assignments, params); simplicity = <median complexity per cluster, computed here by joining frame's complexity_score through cluster_result.assignments>.\n    5. matrix = build_opportunity_matrix(demand, competition, simplicity, params); storage.write_analysis_result(..., 'opportunity_matrix', ...); storage.write_analysis_result(..., 'competition_density', ...).\n    6. trends = compute_tag_trends(frame, cluster_result.assignments, params); storage.write_analysis_result(..., 'tag_trends', ...).\n    7. tag_summary = build_tag_summary(frame, tags, params); storage.write_analysis_result(..., 'tag_summary', ...).\n    8. Assemble and return AnalysisReport, emit 'stage_complete'.\n\nRaises:\n    AnalysisError: If run_id does not exist or games_enriched has zero rows for run_id and enrichment's own report indicates it should not be empty (distinguishing a legitimately empty candidate set, which is not an error, from enrichment never having run at all, which is) -- the distinguishing check is storage.get_run(run_id) plus checking for a prior 'enrichment' stage_complete run_event, per this spec's own resolution of an otherwise ambiguous case.\n",
+  "preconditions": [
+    "run_id exists",
+    "enrichment has completed for run_id (games_enriched may legitimately be empty if the candidate set itself was empty, per the module's own edge case, but enrichment's stage_complete event must have been emitted at some point for this run)"
+  ],
+  "postconditions": [
+    "All five analysis_types (opportunity_matrix, tag_summary, tag_clusters, tag_trends, competition_density) have a row in analysis_results for run_id after a successful call, even if some are empty-but-well-formed for a tiny/empty candidate set, per the module's own edge case",
+    "Re-running run_analysis for the same run_id after a threshold change replaces the prior analysis_results rows (write_analysis_result's own replace-on-same-key semantics)"
+  ],
+  "edge_cases": [
+    {"input": "Candidate set smaller than min_cluster_size entirely", "expected_behavior": "stage succeeds, writes empty-but-well-formed results with an explanatory warning event, per the module's own edge case; AnalysisReport.scored_cluster_count == 0"},
+    {"input": "Enrichment has never run for run_id (games_enriched table has no rows AND no enrichment stage_complete event exists)", "expected_behavior": "AnalysisError, distinct from the legitimately-empty-candidate-set case above"},
+    {"input": "cluster_tags falls back to its run-local threshold search (pre-freeze run 1)", "expected_behavior": "run_analysis emits an explicit 'info' event noting the threshold is provisional and will be superseded once scripts/freeze_empirical_parameters.py runs, so this is visible in the run log rather than silently baked into the stored tag_clusters result with no indication of its provisional status"}
+  ],
+  "unit_tests": [],
+  "dependencies": ["apply_simplicity_filter", "cluster_tags", "compute_demand", "compute_competition_density", "compute_tag_trends", "build_opportunity_matrix", "build_tag_summary", "AnalysisReport", "AnalysisError"],
+  "integration_tests": [
+    {"name": "test_run_analysis_over_fixture_db_writes_all_five_types", "description": "tests/fixtures/enriched_small.csv and tags_small.csv loaded into a fixture database produce all five analysis_types with the expected schemas, per the module's own integration test.", "inputs": {}, "expected": "all five analysis_results rows present and well-formed"}
+  ]
+}

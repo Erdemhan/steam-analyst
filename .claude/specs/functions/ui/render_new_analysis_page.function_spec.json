@@ -1,0 +1,27 @@
+{
+  "module": "ui",
+  "function_name": "render_new_analysis_page",
+  "file_path": "src/steam_analyst/ui/pages.py",
+  "description": "The 'Run New Analysis' page: a PipelineConfig-bound form, a Start button, and the live progress panel once a run is active. No FORMULATION.md-governed value is ever exposed as an editable field here (ui invariant).",
+  "signature": "def render_new_analysis_page(conn: sqlite3.Connection, settings: Settings) -> None",
+  "docstring": "Render the run-trigger page.\n\nArgs:\n    conn: This page's own short-lived connection, opened by main/build_navigation's dispatch for this rerun only.\n    settings: Loaded once in main and passed down.\n\nBehavior:\n    - Shows the current parameters_version (config.parameters_version(settings.parameters_path)) read-only, with a note that FORMULATION.md is where the actual values live and this page cannot change them.\n    - A form exposing exactly PipelineConfig's fields: max_catalog_pages (optional int, for a smoke test), request_budget_override (optional int), notes (optional text). start_stage is NOT exposed here -- it is fixed to ACQUISITION for a brand-new run; starting from a later stage is only ever done via Resume on an existing run from the Past Analyses page.\n    - The Start button is disabled while orchestration.active_run_ids() is non-empty (ADR-001: only one writer), with a tooltip explaining why.\n    - On Start: config = PipelineConfig(**form values); run_id = orchestration.start_pipeline_async(settings.db_path, config, settings=settings); st.session_state['active_run_id'] = run_id; st.session_state['last_event_id'] = 0; st.session_state['event_log'] = [].\n    - If st.session_state['active_run_id'] is set (a run was started, possibly in an earlier rerun of this same page), render_progress_panel(settings.db_path, st.session_state['active_run_id']) is called below the form.\n",
+  "preconditions": [],
+  "postconditions": [
+    "No PipelineConfig field is ever populated from a FORMULATION.md-governed value; the form's field set is exactly {max_catalog_pages, request_budget_override, notes}",
+    "Start is unclickable (disabled) whenever orchestration.active_run_ids() is non-empty at render time",
+    "Only SESSION_KEYS entries are written: active_run_id, last_event_id, event_log"
+  ],
+  "edge_cases": [
+    {"input": "A run is already active (started from this page or another tab)", "expected_behavior": "Start is disabled; the progress panel for that active run is shown instead, even if it was started from a different browser tab, since active_run_ids() is process-wide, not session-scoped"},
+    {"input": "Start clicked with an invalid form value (e.g. request_budget_override='abc')", "expected_behavior": "Streamlit's own number_input widget prevents non-numeric entry at the widget level; no invalid PipelineConfig is ever constructed"},
+    {"input": "The page is opened for the first time in a fresh session (no active_run_id in session_state yet)", "expected_behavior": "session_state['active_run_id'] is treated as None/absent; only the form is shown, no progress panel"},
+    {"input": "orchestration.start_pipeline_async raises (e.g. storage.create_run fails)", "expected_behavior": "the exception is caught and shown as an inline error message, not an uncaught traceback; session_state is not updated on this path"}
+  ],
+  "unit_tests": [
+    {"name": "test_form_exposes_only_pipelineconfig_fields", "description": "AppTest inspection of the rendered form's inputs matches exactly max_catalog_pages, request_budget_override, notes.", "inputs": {}, "expected": "no other field present, no FORMULATION.md value editable"},
+    {"name": "test_start_disabled_when_run_active", "description": "With orchestration.active_run_ids() stubbed non-empty, the Start button is disabled.", "inputs": {}, "expected": "button disabled=True"},
+    {"name": "test_start_click_sets_session_state_and_starts_pipeline", "description": "Clicking Start with valid form values calls start_pipeline_async once and sets all three SESSION_KEYS.", "inputs": {}, "expected": "start_pipeline_async called once; session_state has active_run_id, last_event_id=0, event_log=[]"},
+    {"name": "test_start_failure_shown_inline_not_raised", "description": "A stubbed start_pipeline_async raising an exception results in an inline error, not an AppTest exception.", "inputs": {}, "expected": "no exception escapes; error message rendered"}
+  ],
+  "dependencies": ["PipelineConfig", "orchestration.start_pipeline_async", "orchestration.active_run_ids", "render_progress_panel", "config.parameters_version", "SESSION_KEYS"]
+}

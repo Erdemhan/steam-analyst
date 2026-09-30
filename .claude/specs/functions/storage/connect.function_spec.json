@@ -1,0 +1,25 @@
+{
+  "module": "storage",
+  "function_name": "connect",
+  "file_path": "src/steam_analyst/storage/connection.py",
+  "description": "Context-manager wrapper around get_connection that guarantees the connection is closed on exit, including on an exception. This is the form ui.main uses once per Streamlit rerun and the form the orchestration worker thread uses for its own connection (ADR-017), so a connection is never leaked across a rerun or a crashed pipeline stage.",
+  "signature": "@contextmanager\ndef connect(db_path: Path) -> Iterator[sqlite3.Connection]",
+  "docstring": "Open a configured connection for the duration of a with-block.\n\nArgs:\n    db_path: Absolute path to the database file, forwarded to get_connection unchanged.\n\nYields:\n    An open sqlite3.Connection with the same pragmas and thread tagging as get_connection.\n\nRaises:\n    StorageError: Propagated from get_connection if opening fails; the connection is closed before the exception propagates if it was opened successfully but a pragma failed.\n",
+  "preconditions": [
+    "db_path is an absolute pathlib.Path"
+  ],
+  "postconditions": [
+    "The connection is closed when the with-block exits, whether normally or via an exception",
+    "No connection opened by connect() outlives its with-block"
+  ],
+  "edge_cases": [
+    {"input": "An exception is raised inside the with-block body", "expected_behavior": "the connection is still closed (close() in a finally), then the original exception propagates unchanged"},
+    {"input": "get_connection itself raises (e.g. unwritable path)", "expected_behavior": "StorageError propagates directly; there is nothing to close"},
+    {"input": "The caller stores a reference to the connection and uses it after the with-block exits", "expected_behavior": "not guarded against here (that is a caller bug); the connection is closed and any use will raise sqlite3.ProgrammingError"}
+  ],
+  "unit_tests": [
+    {"name": "test_connection_closed_after_normal_exit", "description": "After the with-block exits normally, the connection object reports closed.", "inputs": {"db_path": "tmp/test.db"}, "expected": "conn.execute(...) after the block raises sqlite3.ProgrammingError"},
+    {"name": "test_connection_closed_after_exception", "description": "An exception raised inside the block still results in a closed connection.", "inputs": {"db_path": "tmp/test.db"}, "expected": "connection closed; original exception re-raised, not swallowed"}
+  ],
+  "dependencies": ["get_connection"]
+}

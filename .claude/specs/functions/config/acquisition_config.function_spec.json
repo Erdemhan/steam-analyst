@@ -1,0 +1,27 @@
+{
+  "module": "config",
+  "function_name": "AcquisitionConfig",
+  "file_path": "src/steam_analyst/config/settings.py",
+  "description": "Rate limiting and funnel configuration for the acquisition stage. Locale (cc=us&l=english) is deliberately NOT a field here: ARCHITECTURE.md's Data Sources section locks it as a fixed, non-configurable acquisition-stage constant, so it is hard-coded as a module-level constant inside acquisition, not threaded through config.",
+  "signature": "@dataclass(frozen=True)\nclass AcquisitionConfig:\n    steamspy_page_delay_seconds: float\n    steam_requests_per_minute: float\n    max_retries: int\n    backoff_base_seconds: float\n    backoff_max_seconds: float\n    request_budget: int\n    coarse_filter: CoarseFilterCriteria",
+  "docstring": "Acquisition-stage tunables (ARCHITECTURE.md Data Sources / Rate limiting).\n\nAttributes:\n    steamspy_page_delay_seconds: Minimum delay between consecutive SteamSpy 'all' page requests.\n    steam_requests_per_minute: Token-bucket refill rate for Steam Web API / storefront requests.\n    max_retries: Bounded retry count for HttpClient on 5xx/timeout before marking a request failed.\n    backoff_base_seconds: Initial exponential-backoff interval.\n    backoff_max_seconds: Backoff interval ceiling.\n    request_budget: Hard per-run request cap; RateLimiter.acquire raises RequestBudgetExceeded once spent, per ADR-004/006 'fail loudly rather than hammer the API'.\n    coarse_filter: Nested CoarseFilterCriteria band.\n",
+  "preconditions": [
+    "steamspy_page_delay_seconds >= 0",
+    "steam_requests_per_minute > 0",
+    "max_retries >= 0",
+    "0 < backoff_base_seconds <= backoff_max_seconds",
+    "request_budget > 0"
+  ],
+  "postconditions": [
+    "Instance is frozen; a single AcquisitionConfig is constructed once per run and shared by all acquisition clients"
+  ],
+  "edge_cases": [
+    {"input": "backoff_base_seconds > backoff_max_seconds in the TOML file", "expected_behavior": "ParameterError raised by validate_parameters"},
+    {"input": "request_budget smaller than the expected candidate count for a typical run", "expected_behavior": "Not validated here (config has no knowledge of catalog size); acquisition.run_acquisition surfaces RequestBudgetExceeded at runtime instead"}
+  ],
+  "unit_tests": [
+    {"name": "test_rejects_inverted_backoff_bounds", "description": "backoff_base_seconds > backoff_max_seconds raises ParameterError.", "inputs": {"backoff_base_seconds": 30.0, "backoff_max_seconds": 5.0}, "expected": "ParameterError"},
+    {"name": "test_accepts_valid_fixture", "description": "A complete, valid AcquisitionConfig section round-trips through load_parameters unchanged.", "inputs": {}, "expected": "AcquisitionConfig instance with matching field values"}
+  ],
+  "dependencies": ["CoarseFilterCriteria"]
+}

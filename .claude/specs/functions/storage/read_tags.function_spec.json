@@ -1,0 +1,26 @@
+{
+  "module": "storage",
+  "function_name": "read_tags",
+  "file_path": "src/steam_analyst/storage/tags.py",
+  "description": "Reads a run's game_tags rows, optionally filtered by a minimum vote count.",
+  "signature": "def read_tags(conn: sqlite3.Connection, run_id: str, *, min_votes: int = 0) -> pd.DataFrame",
+  "docstring": "Read tags for a run.\n\nArgs:\n    conn: An open connection.\n    run_id: The run to read.\n    min_votes: Only tags with votes >= min_votes are returned. A row with votes=NULL is excluded whenever min_votes > 0 (NULL is treated as 'unknown vote count', not as zero), and included whenever min_votes == 0.\n\nReturns:\n    A DataFrame with columns appid, tag, votes, rank.\n",
+  "preconditions": [
+    "min_votes >= 0"
+  ],
+  "postconditions": [
+    "Every returned row has votes >= min_votes, or min_votes == 0 and votes is NULL",
+    "Returns an empty DataFrame, not an error, for a run with no tags"
+  ],
+  "edge_cases": [
+    {"input": "min_votes=0 (default)", "expected_behavior": "returns every tag row for the run regardless of votes, including NULL-vote rows"},
+    {"input": "min_votes=10 with some rows having votes=NULL", "expected_behavior": "NULL-vote rows are excluded (NULL >= 10 is not true in SQL's three-valued logic, and this function makes that exclusion explicit rather than relying on SQL NULL semantics implicitly)"},
+    {"input": "run_id has zero tags", "expected_behavior": "empty DataFrame with columns appid, tag, votes, rank"}
+  ],
+  "unit_tests": [
+    {"name": "test_min_votes_filters_correctly", "description": "A fixture with tags at votes=5,15,25 and min_votes=10 returns only the 15 and 25 rows.", "inputs": {"min_votes": 10}, "expected": "2 rows"},
+    {"name": "test_default_returns_all_including_null_votes", "description": "min_votes=0 includes a row with votes=NULL.", "inputs": {"min_votes": 0}, "expected": "the NULL-vote row is present"},
+    {"name": "test_empty_result_for_untagged_run", "description": "A run with zero game_tags rows returns an empty DataFrame.", "inputs": {}, "expected": "empty DataFrame with columns appid, tag, votes, rank"}
+  ],
+  "dependencies": []
+}

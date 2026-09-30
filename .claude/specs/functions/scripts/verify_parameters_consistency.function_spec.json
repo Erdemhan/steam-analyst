@@ -1,0 +1,28 @@
+{
+  "module": "scripts",
+  "function_name": "verify_parameters_consistency",
+  "file_path": "scripts/verify_parameters_consistency.py",
+  "description": "ADR-013's consistency check: parses both config/parameters.toml and FORMULATION.md and fails loudly on any mismatch. Runs in CI and as a startup assertion inside orchestration.run_pipeline. NOT one of the 91 module functions -- a standalone script/library function orchestration will import.",
+  "signature": "def verify_parameters_consistency(formulation_path: Path, parameters_path: Path) -> None",
+  "docstring": "Verify that parameters.toml matches FORMULATION.md's machine-readable summary.\n\nArgs:\n    formulation_path: Path to FORMULATION.md.\n    parameters_path: Path to config/parameters.toml.\n\nReturns:\n    None if every checked value matches.\n\nRaises:\n    ParameterConsistencyError: On any mismatch, naming every offending key (not just the first), so a single CI run surfaces the full drift rather than one value at a time across repeated fix-and-rerun cycles.\n\nRESOLVED (2026-09-20, approach (b) from this spec's earlier draft, user-approved): FORMULATION.md §8 'Machine-Readable Summary' is a fenced ```toml block whose keys and structure mirror config/parameters.toml exactly (same section/key names as AcquisitionConfig, CoarseFilterCriteria, EnrichmentParams, AnalysisParams). This function extracts that single fenced block via a simple, robust delimiter search (the block immediately follows the line '## 8. Machine-Readable Summary', bounded by the first ```toml and the next ``` -- no regex over the surrounding prose is needed, only over locating the fence markers), parses it with the same TOML parser config.load_parameters uses, and does a structural diff against the actual parameters.toml. A key present in FORMULATION.md §8 but absent or different in parameters.toml is a mismatch; the two keys FORMULATION.md §8 itself documents as legitimately absent from parameters.toml when unset (coarse_filter.max_review_count, analysis.tag_distance_threshold) are compared as 'both absent' or 'both present with equal value', never flagged merely for being absent in both.\n",
+  "preconditions": [
+    "Both files exist",
+    "FORMULATION.md contains exactly one fenced toml block under its '## 8. Machine-Readable Summary' heading"
+  ],
+  "postconditions": [
+    "If verify_parameters_consistency returns without raising, every key in FORMULATION.md §8's toml block matches the corresponding key in parameters.toml exactly, at that moment in time (a point-in-time check, re-run at every CI invocation and every pipeline start per ADR-013)"
+  ],
+  "edge_cases": [
+    {"input": "parameters.toml has a value with no corresponding FORMULATION.md §8 entry (e.g. a purely operational tunable like steamspy_page_delay_seconds that §8 never claims to mirror, since it isn't a FORMULATION.md-locked constant)", "expected_behavior": "NOT flagged as a mismatch -- only keys present in §8's toml block are checked; parameters.toml may legitimately have additional operational-only keys"},
+    {"input": "FORMULATION.md §8 updated with a new locked value (e.g. after scripts.freeze_empirical_parameters's snippet is pasted in) but parameters.toml not yet regenerated to match", "expected_behavior": "raises ParameterConsistencyError -- this is exactly the drift ADR-013 exists to catch"},
+    {"input": "The '## 8. Machine-Readable Summary' heading or its toml fence is missing entirely (someone edited FORMULATION.md and accidentally deleted the block)", "expected_behavior": "raises ParameterConsistencyError with a message distinct from a value mismatch, naming the missing-block condition specifically, since this is a different failure mode a maintainer needs to fix differently"},
+    {"input": "coarse_filter.max_review_count is absent from both §8's toml block and parameters.toml (the normal, locked 'no ceiling' state)", "expected_behavior": "not a mismatch -- both-absent is the expected, matching state for this specific key"}
+  ],
+  "unit_tests": [
+    {"name": "test_matching_files_pass", "description": "A fixture pair of FORMULATION.md and parameters.toml with identical §8 values passes without raising.", "inputs": {}, "expected": "no exception"},
+    {"name": "test_mismatched_value_raises_naming_all_offenders", "description": "A fixture pair with two deliberately mismatched values raises ParameterConsistencyError naming both.", "inputs": {}, "expected": "ParameterConsistencyError mentioning both offending keys"},
+    {"name": "test_missing_toml_fence_raises_distinct_error", "description": "A FORMULATION.md fixture missing the §8 fenced block raises ParameterConsistencyError with a message naming the missing-block condition, not a value mismatch.", "inputs": {}, "expected": "ParameterConsistencyError distinguishable from a value-mismatch error"},
+    {"name": "test_both_absent_optional_key_not_flagged", "description": "coarse_filter.max_review_count absent from both FORMULATION.md §8 and parameters.toml is not treated as a mismatch.", "inputs": {}, "expected": "no exception"}
+  ],
+  "dependencies": ["config.load_parameters"]
+}

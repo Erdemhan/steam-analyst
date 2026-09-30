@@ -1,0 +1,96 @@
+# Steam Analyst — locked runtime parameters.
+# Mirrors .claude/context/FORMULATION.md section 8 exactly. Do not hand-edit a
+# locked value here without first getting the corresponding FORMULATION.md
+# change approved — scripts/verify_parameters_consistency.py checks this file
+# against that record on every pipeline run and in CI.
+
+# --- coarse_filter (FORMULATION.md §0) ---
+[acquisition.coarse_filter]
+min_review_count = 25
+earliest_release_date = "2020-01-01"
+include_free_to_play = true
+publisher_blocklist = [
+  "Electronic Arts", "Ubisoft", "Activision", "Activision Blizzard",
+  "Take-Two Interactive", "Rockstar Games", "2K", "Bethesda Softworks",
+  "ZeniMax", "Square Enix", "Capcom", "Sega", "Bandai Namco", "Konami",
+  "Sony Interactive Entertainment", "Microsoft Studios", "Xbox Game Studios",
+  "Warner Bros Games", "Epic Games", "Devolver Digital"
+]
+
+# --- acquisition rate limiting (operational tunables, not FORMULATION.md-locked) ---
+[acquisition]
+steamspy_page_delay_seconds = 0.5
+steam_requests_per_minute = 60.0
+max_retries = 3
+backoff_base_seconds = 1.0
+backoff_max_seconds = 60.0
+request_budget = 10000
+
+# --- enrichment: Boxleiter multipliers (FORMULATION.md §2) ---
+[enrichment.boxleiter_multipliers]
+niche = [20, 27, 35]
+mainstream = [30, 37, 45]
+broad_audience = [40, 50, 65]
+
+[enrichment.genre_bucket_map]
+Strategy = "niche"
+Simulation = "niche"
+Puzzle = "mainstream"
+RPG = "mainstream"
+Horror = "mainstream"
+Adventure = "mainstream"
+Action = "broad_audience"
+Arcade = "broad_audience"
+FPS = "broad_audience"
+Multiplayer = "broad_audience"
+default = "mainstream"
+
+# --- enrichment: revenue (FORMULATION.md §3) ---
+[enrichment.revenue]
+storefront_cut = 0.30
+discount_factor = 0.0
+refund_regional_factor = 0.0
+
+# --- enrichment: complexity score (FORMULATION.md §4) ---
+[enrichment.complexity_weights]
+size_bytes = 0.20
+early_access_days = 0.15
+dev_title_count = 0.15
+simplicity_tag_score = 0.10
+complexity_tag_score = 0.10
+achievement_count = 0.10
+dlc_count = 0.10
+platform_count = 0.05
+language_count = 0.05
+
+[enrichment.complexity_tags]
+simplicity_tags = ["Pixel Graphics", "2D", "Casual", "Short", "Singleplayer"]
+complexity_tags = ["Open World", "Multiplayer", "Physics", "Procedural Generation"]
+
+# complexity_bounds: unset until scripts/freeze_empirical_parameters.py runs
+# against run 1 (ADR-012); each feature gets an [a, b] pair once frozen.
+
+# --- enrichment: effort-adjusted return (FORMULATION.md §5) ---
+[enrichment.effort]
+epsilon = 0.05
+
+# --- enrichment: tag extraction (pre-clustering table-size knobs) ---
+[enrichment.tag_extraction]
+max_per_game = 20
+min_votes = 0
+
+# --- analysis: simplicity threshold (FORMULATION.md §3a) ---
+[analysis]
+simplicity_percentile = 0.40
+# tag_distance_threshold: unset until scripts/freeze_empirical_parameters.py runs (ADR-012)
+clustering_linkage = "average"
+trailing_window_months = 24
+min_cluster_size = 5
+min_tag_votes = 0
+max_tags_per_game = 20
+
+# --- analysis: opportunity score (FORMULATION.md §6) ---
+[analysis.opportunity_weights]
+demand = 0.40
+competition = 0.30
+simplicity = 0.30

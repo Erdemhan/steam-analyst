@@ -1,0 +1,28 @@
+{
+  "module": "enrichment",
+  "function_name": "compute_effort_adjusted_return",
+  "file_path": "src/steam_analyst/enrichment/revenue.py",
+  "description": "Implements FORMULATION.md section 5: E_i = R_i^net / (C_i + epsilon), epsilon locked to 0.05. Ordinal only, no monetary interpretation.",
+  "signature": "def compute_effort_adjusted_return(net_revenue: pd.Series, complexity: pd.Series, params: EnrichmentParams) -> pd.Series",
+  "docstring": "Compute effort-adjusted return.\n\nArgs:\n    net_revenue: R_i^net per appid (may be NaN for F2P rows).\n    complexity: C_i per appid (may be NaN for rows with too much missing complexity data).\n    params: EnrichmentParams.effort_epsilon (locked 0.05).\n\nReturns:\n    A pd.Series: net_revenue / (complexity + epsilon). NaN propagates from either input -- a F2P row (net_revenue NaN) or a too-much-missing-data row (complexity NaN) yields NaN here too, never a fabricated 0 or a computed value from a partially-undefined formula.\n",
+  "preconditions": [
+    "params.effort_epsilon > 0"
+  ],
+  "postconditions": [
+    "Result is finite for every row where both inputs are non-NaN, since complexity + epsilon is always > 0 (complexity is clipped to [0,1] and epsilon > 0)",
+    "Result is NaN wherever either input is NaN"
+  ],
+  "edge_cases": [
+    {"input": "complexity == 0.0 exactly", "expected_behavior": "denominator is exactly epsilon (0.05); result stays finite, per the module's own testing requirement 'effort_adjusted_return stays finite when complexity_score is 0'"},
+    {"input": "net_revenue is NaN (F2P row)", "expected_behavior": "NaN, not 0 and not a divide against a missing numerator"},
+    {"input": "complexity is NaN (excluded row)", "expected_behavior": "NaN"},
+    {"input": "net_revenue == 0.0 (zero-review, non-F2P row) and complexity > 0", "expected_behavior": "0.0 exactly, a valid (if uninteresting) ordinal value, not NaN"}
+  ],
+  "unit_tests": [
+    {"name": "test_finite_at_zero_complexity", "description": "complexity=0.0, net_revenue=1000 yields 1000/0.05=20000.0.", "inputs": {"net_revenue": 1000.0, "complexity": 0.0}, "expected": 20000.0},
+    {"name": "test_nan_propagates_from_free_to_play", "description": "net_revenue=NaN yields NaN regardless of complexity.", "inputs": {"net_revenue": "NaN", "complexity": 0.3}, "expected": "NaN"},
+    {"name": "test_nan_propagates_from_missing_complexity", "description": "complexity=NaN yields NaN.", "inputs": {"net_revenue": 500.0, "complexity": "NaN"}, "expected": "NaN"},
+    {"name": "test_zero_revenue_nonfree_yields_zero", "description": "net_revenue=0.0, complexity=0.5 yields 0.0, not NaN.", "inputs": {"net_revenue": 0.0, "complexity": 0.5}, "expected": 0.0}
+  ],
+  "dependencies": []
+}

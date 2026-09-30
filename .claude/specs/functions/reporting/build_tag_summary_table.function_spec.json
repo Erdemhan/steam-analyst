@@ -1,0 +1,24 @@
+{
+  "module": "reporting",
+  "function_name": "build_tag_summary_table",
+  "file_path": "src/steam_analyst/reporting/views.py",
+  "description": "Display-ready transform of analysis.build_tag_summary's stored output, truncated to the top_n most populous tags.",
+  "signature": "def build_tag_summary_table(tag_summary: pd.DataFrame, *, top_n: int = 100) -> pd.DataFrame",
+  "docstring": "Build the display-ready tag summary table.\n\nArgs:\n    tag_summary: analysis_results['tag_summary'] deserialized back into a DataFrame.\n    top_n: Maximum rows to return, selected by n_games descending (most-represented tags first) -- a display convenience since a run's full tag vocabulary can be large.\n\nReturns:\n    A DataFrame limited to top_n rows sorted by n_games descending, with rounded/human-readable columns as in build_opportunity_matrix_view.\n",
+  "preconditions": [
+    "top_n > 0"
+  ],
+  "postconditions": [
+    "Result has at most top_n rows",
+    "Result is sorted by n_games descending"
+  ],
+  "edge_cases": [
+    {"input": "tag_summary has fewer than top_n rows", "expected_behavior": "returns all of them, without padding, per the same 'no padding when the pool is smaller' convention used by select_case_studies"},
+    {"input": "tag_summary is empty", "expected_behavior": "returns an empty DataFrame with the expected columns"}
+  ],
+  "unit_tests": [
+    {"name": "test_returns_top_n_by_game_count", "description": "top_n=5 on a fixture with 20 tags returns exactly the 5 most-represented tags.", "inputs": {"top_n": 5}, "expected": "5 rows, the 5 highest n_games values"},
+    {"name": "test_fewer_rows_than_top_n_returns_all", "description": "top_n=100 on a fixture with 10 tags returns all 10, no padding.", "inputs": {"top_n": 100}, "expected": "10 rows"}
+  ],
+  "dependencies": []
+}

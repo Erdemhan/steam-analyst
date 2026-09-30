@@ -1,0 +1,24 @@
+{
+  "module": "acquisition",
+  "function_name": "RateLimiter.remaining_budget",
+  "file_path": "src/steam_analyst/acquisition/rate_limiter.py",
+  "description": "Reports the number of requests still permitted before RequestBudgetExceeded will be raised, so callers (e.g. run_acquisition) can decide to stop issuing new work proactively rather than hitting the exception.",
+  "signature": "def remaining_budget(self) -> int",
+  "docstring": "Return remaining request budget.\n\nReturns:\n    The number of further acquire() calls that will succeed before the budget is exhausted. Never negative.\n",
+  "preconditions": [],
+  "postconditions": [
+    "Return value is always >= 0",
+    "Decreases by exactly 1 after each successful acquire() call and is otherwise unaffected by observe_response"
+  ],
+  "edge_cases": [
+    {"input": "Called immediately after construction, before any acquire()", "expected_behavior": "returns the full configured request_budget"},
+    {"input": "Called after the budget has been fully consumed", "expected_behavior": "returns 0, not a negative number"}
+  ],
+  "unit_tests": [
+    {"name": "test_full_budget_before_any_use", "description": "A fresh RateLimiter(request_budget=100) reports 100.", "inputs": {"request_budget": 100}, "expected": 100},
+    {"name": "test_decrements_per_acquire", "description": "After 3 successful acquire() calls on a budget of 100, remaining_budget() is 97.", "inputs": {}, "expected": 97},
+    {"name": "test_floors_at_zero", "description": "After the budget is exhausted, remaining_budget() stays at 0 rather than going negative.", "inputs": {"request_budget": 1}, "expected": 0
+    }
+  ],
+  "dependencies": []
+}

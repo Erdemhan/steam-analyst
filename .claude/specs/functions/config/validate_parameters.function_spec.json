@@ -1,0 +1,30 @@
+{
+  "module": "config",
+  "function_name": "validate_parameters",
+  "file_path": "src/steam_analyst/config/parameters.py",
+  "description": "Internal validation pass over the raw dict parsed from config/parameters.toml, applied before constructing AcquisitionConfig / EnrichmentParams / AnalysisParams. Factored out of load_parameters as its own function so each invalid-input case in the module spec's testing list can be exercised directly against a plain dict fixture, without needing a full TOML file per case.",
+  "signature": "def validate_parameters(raw: dict[str, Any]) -> None",
+  "docstring": "Validate the raw parsed contents of parameters.toml against every invariant required by config's three parameter dataclasses.\n\nArgs:\n    raw: The dict produced by tomllib.load on config/parameters.toml (or an equivalent in-memory fixture dict in tests).\n\nReturns:\n    None if every check passes.\n\nRaises:\n    ParameterError: On the first violated invariant, with a message naming the offending section/key and the actual value. Checks run in a fixed order (missing section -> missing key -> out-of-range value -> weights-sum -> ordering) so error messages are deterministic across otherwise-invalid fixtures with multiple problems.\n",
+  "preconditions": [
+    "raw is the direct output of a TOML parse (nested dicts/lists/primitives only, no dataclasses yet)"
+  ],
+  "postconditions": [
+    "If validate_parameters returns without raising, load_parameters may construct all three dataclasses from raw without any further defensive checks"
+  ],
+  "edge_cases": [
+    {"input": "raw missing the entire [enrichment] section", "expected_behavior": "ParameterError('missing section: enrichment')"},
+    {"input": "raw['enrichment'] present but missing 'effort_epsilon'", "expected_behavior": "ParameterError('missing key: enrichment.effort_epsilon')"},
+    {"input": "raw['enrichment']['storefront_cut'] == 1.5", "expected_behavior": "ParameterError('out of range [0,1]: enrichment.storefront_cut=1.5')"},
+    {"input": "raw['enrichment']['complexity_weights'] values summing to 0.8", "expected_behavior": "ParameterError('complexity_weights sum to 0.8, expected 1.0')"},
+    {"input": "raw['enrichment']['boxleiter_multipliers']['broad_audience'] == [65, 50, 40] (descending, not ascending)", "expected_behavior": "ParameterError naming the bucket and the unordered triple"},
+    {"input": "raw['analysis']['clustering_linkage'] == 'ward'", "expected_behavior": "ParameterError('invalid clustering_linkage: ward')"},
+    {"input": "a fully valid raw dict", "expected_behavior": "returns None"}
+  ],
+  "unit_tests": [
+    {"name": "test_missing_section_raises", "description": "A raw dict lacking the 'acquisition' top-level key raises ParameterError.", "inputs": {"raw": {"enrichment": {}, "analysis": {}}}, "expected": "ParameterError"},
+    {"name": "test_weights_not_summing_to_one_raises", "description": "As described in the module spec's testing list.", "inputs": {"raw": {"enrichment": {"complexity_weights": {"install_size": 0.5, "achievement_count": 0.5, "dlc_count": 0.5}}}}, "expected": "ParameterError"},
+    {"name": "test_unordered_multiplier_triple_raises", "description": "As described in the module spec's testing list.", "inputs": {"raw": {"enrichment": {"boxleiter_multipliers": {"niche": [35, 27, 20]}}}}, "expected": "ParameterError"},
+    {"name": "test_valid_fixture_passes", "description": "tests/fixtures/parameters_valid.toml parsed and validated raises nothing.", "inputs": {}, "expected": "None"}
+  ],
+  "dependencies": ["ParameterError"]
+}

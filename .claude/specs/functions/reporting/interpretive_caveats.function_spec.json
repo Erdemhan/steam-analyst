@@ -1,0 +1,21 @@
+{
+  "module": "reporting",
+  "function_name": "interpretive_caveats",
+  "file_path": "src/steam_analyst/reporting/case_studies.py",
+  "description": "Returns the fixed caveat set mirroring ARCHITECTURE.md's seven 'Known Limitations' items verbatim, plus the Boxleiter accuracy-limit note from FORMULATION.md section 2. The UI renders these on every result surface.",
+  "signature": "def interpretive_caveats() -> list[Caveat]",
+  "docstring": "Return the fixed, run-independent caveat list.\n\nReturns:\n    A list of exactly eight Caveat entries: one per ARCHITECTURE.md 'Known Limitations' item 1-7 (keys: 'steamspy_owner_confidence', 'boxleiter_approximation', 'simplicity_proxy', 'no_scraping_demand_gap', 'survivorship_bias', 'competition_historical', 'coarse_filter_boundary'), plus one additional entry ('boxleiter_accuracy_limit') carrying FORMULATION.md section 2's verbatim accuracy note ('per the Gamalytic test, only ~43% of games fall within +/-30% of their true sales using the plain review-multiple method... treat S_i as an ordinal ranking signal, not a point estimate a user should quote as fact'), which FORMULATION.md explicitly instructs to 'record verbatim in reporting.interpretive_caveats'.\n\nTakes no arguments and touches no database -- this is a fixed, code-authored, non-Streamlit-dependent list (module non_goal: 'usable and testable headless').\n",
+  "preconditions": [],
+  "postconditions": [
+    "Returns exactly 8 Caveat entries with stable, unique keys across calls and across code versions",
+    "body text is a close paraphrase or verbatim quote of the corresponding ARCHITECTURE.md/FORMULATION.md source text, never a newly-invented interpretation of the limitation"
+  ],
+  "edge_cases": [
+    {"input": "Called multiple times in one process", "expected_behavior": "returns equal (by value) lists every time -- purely a function of the hard-coded caveat text, no external state"}
+  ],
+  "unit_tests": [
+    {"name": "test_returns_one_caveat_per_limitation_with_stable_keys", "description": "Returns exactly 8 Caveat entries with the documented key set, per the module's own testing requirement.", "inputs": {}, "expected": "8 entries; keys match the documented set exactly"},
+    {"name": "test_boxleiter_accuracy_note_present", "description": "The 'boxleiter_accuracy_limit' caveat's body contains the '43%' figure from FORMULATION.md.", "inputs": {}, "expected": "'43%' substring present in that caveat's body"}
+  ],
+  "dependencies": ["Caveat"]
+}

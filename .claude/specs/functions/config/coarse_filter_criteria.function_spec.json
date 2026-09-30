@@ -1,0 +1,27 @@
+{
+  "module": "config",
+  "function_name": "CoarseFilterCriteria",
+  "file_path": "src/steam_analyst/config/settings.py",
+  "description": "Stage-one candidate selection band consumed by acquisition.coarse_filter. Every value is PROPOSED-turned-LOCKED in FORMULATION.md section 0 and is read from config/parameters.toml; none may be defaulted inside code.",
+  "signature": "@dataclass(frozen=True)\nclass CoarseFilterCriteria:\n    min_review_count: int\n    max_review_count: int | None\n    earliest_release_date: date | None\n    latest_release_date: date | None\n    include_free_to_play: bool\n    max_price_usd: float | None\n    publisher_blocklist: list[str]",
+  "docstring": "Stage-one funnel band (FORMULATION.md section 0).\n\nAttributes:\n    min_review_count: Review-count floor. Locked value: 25.\n    max_review_count: Review-count ceiling, or None for no ceiling. Locked value: None -- a hard ceiling would systematically exclude the solo/small-team breakout hits the tool most wants to surface. Kept as int | None (not a bare int) precisely so 'no ceiling' is representable without a magic sentinel like -1 or sys.maxsize.\n    earliest_release_date: Locked value: date(2020, 1, 1), the post review-prompt-discontinuity boundary (FORMULATION.md section 2).\n    latest_release_date: Optional upper release-date bound; None means no upper bound (i.e. up to the moment the run's bulk snapshot was fetched).\n    include_free_to_play: Locked value: True -- F2P titles are kept for demand/competition analysis, with revenue fields set NULL downstream in enrichment (FORMULATION.md section 2).\n    max_price_usd: Optional price sanity ceiling; None means no price-based exclusion.\n    publisher_blocklist: Case-insensitive publisher-name fragments used to exclude AAA/large-publisher titles (FORMULATION.md section 0). Loaded as data from config/parameters.toml, not hard-coded, so it can be extended without a code change. NOTE: this field is not present in the current 00_config.module_spec.json draft of CoarseFilterCriteria; it must be added there, since acquisition.coarse_filter cannot implement the locked publisher-blocklist mechanism without it.\n",
+  "preconditions": [
+    "min_review_count >= 0",
+    "max_review_count is None or max_review_count >= min_review_count",
+    "earliest_release_date is None or latest_release_date is None or earliest_release_date <= latest_release_date",
+    "publisher_blocklist entries are non-empty, already-trimmed strings; matching against a candidate's publisher field is case-insensitive substring containment (e.g. 'Ubisoft' matches 'Ubisoft Entertainment')"
+  ],
+  "postconditions": [
+    "The instance is frozen for the lifetime of a run; criteria are snapshotted into runs.config_json at run creation so a past run's exact band remains reconstructable"
+  ],
+  "edge_cases": [
+    {"input": "max_review_count omitted from parameters.toml", "expected_behavior": "load_parameters sets it to None (locked default), not to a large integer sentinel"},
+    {"input": "publisher_blocklist entry containing only whitespace", "expected_behavior": "load_parameters strips and drops empty entries, and validate_parameters raises ParameterError if a resulting entry is empty after stripping the original non-empty-looking string"},
+    {"input": "max_review_count < min_review_count in the TOML file", "expected_behavior": "ParameterError raised by validate_parameters, naming both values"}
+  ],
+  "unit_tests": [
+    {"name": "test_no_ceiling_represented_as_none", "description": "A parameters.toml without a max_review_count key produces CoarseFilterCriteria.max_review_count is None.", "inputs": {}, "expected": "None"},
+    {"name": "test_rejects_inverted_review_band", "description": "max_review_count < min_review_count raises ParameterError.", "inputs": {"min_review_count": 100, "max_review_count": 50}, "expected": "ParameterError"}
+  ],
+  "dependencies": []
+}

@@ -1,0 +1,25 @@
+{
+  "module": "ui",
+  "function_name": "main and build_navigation",
+  "file_path": "src/steam_analyst/ui/app.py",
+  "description": "The entry point app.py calls, and the navigation builder split out from it so a test can assert the page set without executing Streamlit's actual page-render machinery.",
+  "signature": "def main() -> None: ...\n\ndef build_navigation() -> 'st.navigation': ...",
+  "docstring": "main: Process entry point.\n\nSequence:\n    1. st.set_page_config(...).\n    2. settings = config.load_settings().\n    3. with storage.connect(settings.db_path) as conn: storage.initialize_schema(conn); storage.migrate(conn); orchestration.reconcile_orphaned_runs(conn) -- all inside one short-lived connection that closes before navigation runs, per ADR-017.\n    4. nav = build_navigation(); nav.run() -- dispatches to whichever page function Streamlit selected, each of which opens its OWN short-lived connection (main's own connection from step 3 is already closed by the time a page function runs).\n\nbuild_navigation: Returns st.navigation over three st.Page objects wrapping render_new_analysis_page ('Run New Analysis', url_path='new', default page), render_past_analyses_page ('Past Analyses', url_path='runs'), render_analysis_detail_page ('Analysis Detail', url_path='detail'). Built from plain functions, not the pages/ directory convention, per ADR-018 (that convention requires top-level scripts that cannot take arguments and cannot be imported into a test).\n",
+  "preconditions": [],
+  "postconditions": [
+    "reconcile_orphaned_runs runs exactly once per process start, before build_navigation, never inside a page render function",
+    "The connection opened in main's own startup sequence is closed before nav.run() dispatches to a page function",
+    "build_navigation's returned page set is exactly the three declared pages, with 'Run New Analysis' as the default"
+  ],
+  "edge_cases": [
+    {"input": "settings.db_path's parent directory does not exist yet (first-ever run of the app)", "expected_behavior": "storage.get_connection creates it; initialize_schema then creates all tables -- no manual setup step required before first launch"},
+    {"input": "reconcile_orphaned_runs finds and reconciles orphaned runs on this startup", "expected_behavior": "main does not itself render anything about this; the Past Analyses page simply shows those runs as 'failed' with Resume available, the next time it is opened"},
+    {"input": "main is called a second time in the same process (should not normally happen -- Streamlit calls it once per process, not once per rerun)", "expected_behavior": "reconcile_orphaned_runs running twice is harmless (idempotent per its own spec), just redundant"}
+  ],
+  "unit_tests": [
+    {"name": "test_build_navigation_returns_three_pages_with_default", "description": "build_navigation's page set matches the three declared pages, 'Run New Analysis' marked default.", "inputs": {}, "expected": "3 pages, correct titles and url_paths, correct default"},
+    {"name": "test_main_calls_reconcile_before_navigation", "description": "Using stubs for storage and orchestration, main calls reconcile_orphaned_runs before build_navigation/nav.run(), asserted by call-order recording.", "inputs": {}, "expected": "reconcile_orphaned_runs precedes nav.run() in the call log"},
+    {"name": "test_main_startup_connection_closed_before_dispatch", "description": "A connection-factory spy shows main's own connection is closed before any page-render function's connection is opened.", "inputs": {}, "expected": "no overlapping open connections"}
+  ],
+  "dependencies": ["config.load_settings", "storage.connect", "storage.initialize_schema", "storage.migrate", "orchestration.reconcile_orphaned_runs", "render_new_analysis_page", "render_past_analyses_page", "render_analysis_detail_page"]
+}

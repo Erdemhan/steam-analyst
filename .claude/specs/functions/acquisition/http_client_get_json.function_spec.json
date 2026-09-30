@@ -1,0 +1,31 @@
+{
+  "module": "acquisition",
+  "function_name": "HttpClient.get_json",
+  "file_path": "src/steam_analyst/acquisition/http_client.py",
+  "description": "Shared base HTTP GET used by every client (SteamSpyClient, SteamStoreClient, SteamReviewsClient): session reuse, per-request timeout, a custom User-Agent identifying the tool, exponential backoff with jitter, and bounded retries. Returns (status_code, payload) rather than raising on 4xx/5xx so the caller can persist the failure verbatim (ADR-005, ADR-003).",
+  "signature": "def get_json(self, url: str, params: Mapping[str, Any] | None = None) -> tuple[int, dict]",
+  "docstring": "Perform a rate-limited-by-caller HTTP GET and parse the JSON body.\n\nArgs:\n    url: Absolute request URL.\n    params: Query parameters.\n\nReturns:\n    (status_code, payload). payload is the parsed JSON dict on any status where the body is valid JSON (including 4xx/5xx error bodies that happen to be JSON, e.g. SteamSpy's undocumented error shapes). If the body is not valid JSON (e.g. an HTML error page), payload is {'_raw_text': <body text>, '_parse_error': True} so the caller can still persist something and mark the fetch failed, per the acquisition module's edge case for non-JSON responses.\n\nRetries:\n    On a connection error, timeout, or 5xx status, retries up to AcquisitionConfig.max_retries times with exponential backoff (base backoff_base_seconds, capped at backoff_max_seconds) plus random jitter, before returning the final attempt's outcome. This method does not itself call RateLimiter.acquire() -- callers (SteamSpyClient, SteamStoreClient, SteamReviewsClient) are responsible for calling acquire() once per logical request before invoking get_json, so that retries internal to get_json do not each separately re-throttle against the token bucket.\n",
+  "preconditions": [
+    "url is an absolute http(s) URL",
+    "self.timeout_seconds > 0 (from Settings.http_timeout_seconds)"
+  ],
+  "postconditions": [
+    "Always returns a (int, dict) tuple; never raises for a well-formed url except for programmer-error cases (e.g. a malformed URL string)",
+    "On success, status_code is the status of the LAST attempt made, and payload is that attempt's parsed (or raw-text-wrapped) body",
+    "Retries never exceed max_retries additional attempts beyond the first"
+  ],
+  "edge_cases": [
+    {"input": "Server returns 200 with a non-JSON body (HTML)", "expected_behavior": "returns (200, {'_raw_text': ..., '_parse_error': True}); still a tuple, no exception"},
+    {"input": "Connection timeout on every attempt up to max_retries", "expected_behavior": "returns the final attempt's outcome, typically (0, {'_raw_text': '', '_parse_error': True, '_transport_error': 'timeout'}) using a sentinel status_code=0 to represent 'no HTTP response received at all', distinct from any real status code"},
+    {"input": "Server returns 500 on the first attempt, 200 on the retry", "expected_behavior": "returns (200, <parsed body>) -- only the final attempt's outcome matters"},
+    {"input": "Server returns 429", "expected_behavior": "returned as-is, (429, <parsed body or raw text>); RateLimiter.observe_response (called by the higher-level client, not by get_json) is what reacts to 429, not get_json itself"}
+  ],
+  "unit_tests": [
+    {"name": "test_success_returns_parsed_json", "description": "A 200 response with a valid JSON body returns (200, <dict>).", "inputs": {"url": "https://example.test/ok"}, "expected": "(200, {...})"},
+    {"name": "test_non_json_body_wrapped", "description": "A 200 response with an HTML body returns the raw-text wrapper with _parse_error=True.", "inputs": {}, "expected": "(200, {'_raw_text': '<html>...', '_parse_error': True})"},
+    {"name": "test_retries_on_5xx_then_succeeds", "description": "A mocked transport returning 500 then 200 results in the 200 outcome, using exactly 2 attempts.", "inputs": {"max_retries": 3}, "expected": "(200, <dict>), 2 attempts made"},
+    {"name": "test_exhausts_retries_on_persistent_5xx", "description": "A transport always returning 503 makes exactly max_retries+1 attempts and returns the last (503, ...).", "inputs": {"max_retries": 2}, "expected": "(503, ...), 3 attempts made"},
+    {"name": "test_timeout_returns_sentinel_status", "description": "A transport that always raises a timeout returns status_code=0 with a transport-error marker.", "inputs": {}, "expected": "(0, {'_transport_error': 'timeout', ...})"}
+  ],
+  "dependencies": []
+}

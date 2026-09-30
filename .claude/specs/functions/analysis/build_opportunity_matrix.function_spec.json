@@ -1,0 +1,29 @@
+{
+  "module": "analysis",
+  "function_name": "build_opportunity_matrix",
+  "file_path": "src/steam_analyst/analysis/scoring.py",
+  "description": "Implements FORMULATION.md section 6's opportunity formula Omega_k = w_D*D_k - w_K*K_k + w_Sigma*Sigma_k, combining demand, competition and simplicity z-scores, restricted to archetypes clearing the minimum cluster size.",
+  "signature": "def build_opportunity_matrix(demand: pd.DataFrame, competition: pd.DataFrame, simplicity: pd.DataFrame, params: AnalysisParams) -> pd.DataFrame",
+  "docstring": "Assemble the opportunity matrix.\n\nArgs:\n    demand: compute_demand's output.\n    competition: compute_competition_density's output.\n    simplicity: A DataFrame indexed by cluster_id with a median_complexity column (median complexity_score of the archetype's windowed games, from apply_simplicity_filter's input population, i.e. computed by whichever caller -- run_analysis -- joins the buildable/full frame per archetype; this function receives it pre-computed).\n    params: AnalysisParams.opportunity_weights, min_cluster_size.\n\nReturns:\n    A DataFrame with columns cluster_id, label, n_games, demand_z, competition_z, simplicity_z, opportunity_score, median_estimated_sales_mid, median_complexity, releases_in_window -- restricted to archetypes present in ALL THREE input frames with n_games >= params.min_cluster_size. Sigma_k = z(1 - median_complexity) is computed here (the '1 -' inversion, since LOWER complexity should contribute POSITIVELY to simplicity_z, per FORMULATION.md's Sigma_k formula) before calling compute_zscore. Ties in opportunity_score are broken by cluster_id ascending, per the module's own invariant.\n",
+  "preconditions": [
+    "demand, competition and simplicity share a common cluster_id indexing scheme (all three derived from the same cluster_tags call for this run)",
+    "sum(params.opportunity_weights.values()) == 1.0"
+  ],
+  "postconditions": [
+    "Every returned row has n_games >= params.min_cluster_size",
+    "z-scores are computed only over the scored (i.e. already min_cluster_size-filtered) population, per the module's own invariant 'z-scores are computed over the scored cluster population of the same run and are therefore comparable within a run but not across runs'",
+    "Result is sorted by opportunity_score descending, ties by cluster_id ascending"
+  ],
+  "edge_cases": [
+    {"input": "An archetype present in demand and competition but with n_games < min_cluster_size", "expected_behavior": "excluded from the returned matrix entirely, not scored with a low/null value -- it is reported separately by run_analysis via AnalysisReport.clusters_below_min_size, not as a matrix row"},
+    {"input": "Only one archetype clears min_cluster_size", "expected_behavior": "compute_zscore's zero-variance guard applies (a single-row z-score population trivially has zero variance for every column), so demand_z=competition_z=simplicity_z=0 and opportunity_score=0 for that sole archetype -- reported, per the module's own edge case 'A single archetype dominating the candidate set -> reported, since a near-degenerate clustering invalidates comparison'"},
+    {"input": "An archetype missing from one of the three input frames (e.g. present in demand but not competition, which should not normally happen since both are computed from the same assignments)", "expected_behavior": "excluded from the result via an inner join across the three frames -- treated as a data-consistency issue worth a warning event from the caller, not silently included with a partial/NaN score"}
+  ],
+  "unit_tests": [
+    {"name": "test_reproduces_hand_computed_zscores_and_combination", "description": "A synthetic set of archetypes with known demand/competition/simplicity values reproduces the hand-computed z-scores and weighted combination exactly, per the module's own testing requirement.", "inputs": {}, "expected": "matches hand computation to floating-point tolerance"},
+    {"name": "test_zero_variance_inputs_produce_zero_not_nan", "description": "Identical demand values across all scored archetypes produce demand_z=0 for all, not NaN, per the module's own testing requirement.", "inputs": {}, "expected": "demand_z == 0.0 for every row"},
+    {"name": "test_below_min_size_excluded_from_scoring", "description": "An archetype with n_games below min_cluster_size does not appear in the returned matrix.", "inputs": {}, "expected": "absent from result"},
+    {"name": "test_ties_broken_by_cluster_id", "description": "Two archetypes with identical opportunity_score are ordered by cluster_id ascending.", "inputs": {}, "expected": "lower cluster_id appears first"}
+  ],
+  "dependencies": ["compute_zscore", "compute_demand", "compute_competition_density"]
+}

@@ -1,0 +1,26 @@
+{
+  "module": "config",
+  "function_name": "Settings",
+  "file_path": "src/steam_analyst/config/settings.py",
+  "description": "Environment-derived runtime settings: secrets, filesystem paths and HTTP client identity. Never contains any estimation constant -- those live only in EnrichmentParams / AnalysisParams / AcquisitionConfig, loaded separately from config/parameters.toml.",
+  "signature": "@dataclass(frozen=True)\nclass Settings:\n    db_path: Path\n    steam_web_api_key: str | None\n    http_timeout_seconds: float\n    user_agent: str\n    parameters_path: Path",
+  "docstring": "Immutable, environment-derived settings for one process invocation.\n\nAttributes:\n    db_path: Absolute path to the SQLite database file (data/analyses.db by default). Resolved with pathlib so it is correct on both the Windows development machine and any Linux execution host.\n    steam_web_api_key: Value of STEAM_WEB_API_KEY, or None if unset. Absence is not fatal at construction time -- it is validated lazily by acquisition.SteamStoreClient / SteamReviewsClient, the first callers that actually need it.\n    http_timeout_seconds: Per-request timeout applied by acquisition.HttpClient.\n    user_agent: Custom User-Agent string identifying this tool to Steam/SteamSpy, per ARCHITECTURE.md's terms-of-service-safety driver.\n    parameters_path: Absolute path to config/parameters.toml, passed to load_parameters.\n",
+  "preconditions": [
+    "db_path and parameters_path are constructed as pathlib.Path instances, never raw strings joined with os separators",
+    "http_timeout_seconds > 0"
+  ],
+  "postconditions": [
+    "The instance is frozen (immutable) for the lifetime of the process",
+    "steam_web_api_key is either None or a non-empty string; an empty string in the environment is normalized to None by load_settings, never stored as ''"
+  ],
+  "edge_cases": [
+    {"input": "STEAM_WEB_API_KEY set to an empty string in the environment", "expected_behavior": "Settings.steam_web_api_key is None, not ''"},
+    {"input": "http_timeout_seconds <= 0 supplied directly to the constructor (bypassing load_settings)", "expected_behavior": "raises ValueError in __post_init__"},
+    {"input": "db_path given as a relative path", "expected_behavior": "accepted as-is by the dataclass; load_settings is responsible for resolving it to an absolute path before constructing Settings"}
+  ],
+  "unit_tests": [
+    {"name": "test_settings_is_immutable", "description": "Attempting to assign to a field after construction raises FrozenInstanceError.", "inputs": {}, "expected": "dataclasses.FrozenInstanceError"},
+    {"name": "test_settings_rejects_non_positive_timeout", "description": "Constructing Settings with http_timeout_seconds=0 raises ValueError.", "inputs": {"http_timeout_seconds": 0}, "expected": "ValueError"}
+  ],
+  "dependencies": []
+}

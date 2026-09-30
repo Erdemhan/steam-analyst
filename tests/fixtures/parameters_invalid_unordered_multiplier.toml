@@ -1,0 +1,62 @@
+# broad_audience multipliers are descending [65, 50, 40], not ascending
+[acquisition.coarse_filter]
+min_review_count = 25
+earliest_release_date = "2020-01-01"
+include_free_to_play = true
+publisher_blocklist = []
+
+[acquisition]
+steamspy_page_delay_seconds = 0.5
+steam_requests_per_minute = 60.0
+max_retries = 3
+backoff_base_seconds = 1.0
+backoff_max_seconds = 60.0
+request_budget = 10000
+
+[enrichment.boxleiter_multipliers]
+niche = [20, 27, 35]
+mainstream = [30, 37, 45]
+broad_audience = [65, 50, 40]
+
+[enrichment.genre_bucket_map]
+default = "mainstream"
+
+[enrichment.revenue]
+storefront_cut = 0.30
+discount_factor = 0.0
+refund_regional_factor = 0.0
+
+[enrichment.complexity_weights]
+size_bytes = 0.20
+early_access_days = 0.15
+dev_title_count = 0.15
+simplicity_tag_score = 0.10
+complexity_tag_score = 0.10
+achievement_count = 0.10
+dlc_count = 0.10
+platform_count = 0.05
+language_count = 0.05
+
+[enrichment.complexity_tags]
+simplicity_tags = []
+complexity_tags = []
+
+[enrichment.effort]
+epsilon = 0.05
+
+[enrichment.tag_extraction]
+max_per_game = 20
+min_votes = 0
+
+[analysis]
+simplicity_percentile = 0.40
+clustering_linkage = "average"
+trailing_window_months = 24
+min_cluster_size = 5
+min_tag_votes = 0
+max_tags_per_game = 20
+
+[analysis.opportunity_weights]
+demand = 0.40
+competition = 0.30
+simplicity = 0.30

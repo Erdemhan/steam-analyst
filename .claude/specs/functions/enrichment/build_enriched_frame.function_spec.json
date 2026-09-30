@@ -1,0 +1,25 @@
+{
+  "module": "enrichment",
+  "function_name": "build_enriched_frame",
+  "file_path": "src/steam_analyst/enrichment/pipeline.py",
+  "description": "Composes the whole enrichment stage as one pure function (bundle + catalog + params -> enriched frame + tag rows), for direct unit testing from fixtures without touching the database.",
+  "signature": "def build_enriched_frame(bundle: RawBundle, catalog: pd.DataFrame, params: EnrichmentParams) -> tuple[pd.DataFrame, list[TagRow]]",
+  "docstring": "Run the full enrichment transformation in memory.\n\nArgs:\n    bundle: parse_raw_bundle's output.\n    catalog: The full bulk catalog frame (acquisition.build_catalog_frame's output for the whole run), needed by compute_developer_catalog_size.\n    params: EnrichmentParams.\n\nReturns:\n    (enriched_frame, tag_rows): enriched_frame has exactly the columns games_enriched expects (see 01_storage.module_spec.json), including complexity_score, estimated_sales_low/mid/high, estimated_revenue_gross_usd/net_usd, effort_adjusted_return, imputed_features_json, and parameters_version is NOT set here (it is stamped by run_enrichment, the caller, since this pure function has no knowledge of which parameters.toml hash produced params). tag_rows is extract_tags' output.\n\nPipeline order: normalize_features -> extract_tags -> compute_developer_catalog_size (merged into the frame) -> drop non-game rows (counted) -> map_genre_bucket -> compute_complexity_score -> estimate_sales -> estimate_revenue -> compute_effort_adjusted_return -> assemble final column set.\n\nRow-dropping: rows where is_game is False (from normalize_features) are removed from the returned enriched_frame entirely (the enrichment module's invariant: 'Rows whose app_type is not game are dropped and counted, not silently included') -- the drop count and reason are NOT returned by this pure function itself (it has no report object), but ARE computed and returned by run_enrichment, which calls this function and then separately tallies len(bundle.steamspy) - len(enriched_frame) attributable to app_type.\n",
+  "preconditions": [
+    "catalog contains every appid referenced in bundle.steamspy (should hold trivially since bundle.steamspy IS effectively a re-read of the same underlying raw_games rows catalog was built from)"
+  ],
+  "postconditions": [
+    "Calling build_enriched_frame twice with identical (bundle, catalog, params) produces byte-identical output frames (the stage's own idempotence invariant, tested at this pure-function level rather than only at the run_enrichment/storage level)",
+    "Every row in the output has app_type == 'game'"
+  ],
+  "edge_cases": [
+    {"input": "bundle with zero appids (empty candidate set)", "expected_behavior": "returns an empty enriched_frame with the full column set and an empty tag_rows list, per 'Empty candidate set (candidate_count == 0) -> stage succeeds writing zero rows'"},
+    {"input": "Every candidate has app_type != 'game' (e.g. the coarse filter's review-count-based band happened to admit only DLC entries -- a real, if narrow, scenario)", "expected_behavior": "returns an empty enriched_frame; not an error"}
+  ],
+  "unit_tests": [
+    {"name": "test_idempotent_across_two_calls", "description": "Two consecutive calls with the same fixture inputs produce identical DataFrames, per the module's own testing requirement.", "inputs": {}, "expected": "frame_1.equals(frame_2) is True"},
+    {"name": "test_non_game_rows_dropped", "description": "A bundle containing one dlc-type appid alongside game-type appids excludes the dlc row from the output.", "inputs": {}, "expected": "dlc appid absent from enriched_frame"},
+    {"name": "test_integration_against_fixture_matches_expected_csv", "description": "tests/fixtures/raw_bundle_small.json processed end-to-end matches tests/fixtures/expected_enriched_small.csv exactly, per the module's own integration test.", "inputs": {}, "expected": "frame equals the expected fixture CSV"}
+  ],
+  "dependencies": ["normalize_features", "extract_tags", "compute_developer_catalog_size", "map_genre_bucket", "compute_complexity_score", "estimate_sales", "estimate_revenue", "compute_effort_adjusted_return"]
+}

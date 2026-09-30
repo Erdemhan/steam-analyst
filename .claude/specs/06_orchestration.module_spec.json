@@ -1,0 +1,259 @@
+{
+  "module_id": "orchestration",
+  "spec_version": "0.1.0",
+  "status": "planned",
+  "package_path": "src/steam_analyst/orchestration",
+  "responsibility": "Sequence acquisition -> enrichment -> analysis for one run. Create the run row, run the parameter-consistency preflight, maintain per-stage status in run_stages, emit run_events progress records, service cooperative cancellation, translate every exception into a terminal run status, and keep all of that off the Streamlit script thread.",
+  "dependencies": {
+    "internal": ["acquisition", "enrichment", "analysis", "storage", "config"],
+    "external": ["threading (stdlib)", "dataclasses (stdlib)", "enum (stdlib)", "traceback (stdlib)", "pathlib (stdlib)"]
+  },
+  "design_notes": [
+    "This module is the only place that knows the pipeline order. The three stage modules do not import each other and do not import this module (ADR-009).",
+    "Resume is stage-granular and happens in place on the same run_id, backed by the run_stages table (ADR-014). A new run_id would re-fetch the entire SteamSpy catalog, because the raw payload cache is keyed by run_id and there is no cross-run reuse path in v1.",
+    "Cancellation is cooperative and checked at a fixed, enumerated set of points, never by killing a thread (ADR-015).",
+    "The run status vocabulary is not extended. Partial completion is expressed by run_stages plus reporting.is_partial (ADR-016).",
+    "No sqlite3.Connection ever crosses a thread boundary. The async entry points take a Path (ADR-017).",
+    "Every numeric constant reaching a stage comes from config; this module passes parameter objects through and never defaults them."
+  ],
+  "public_interface": [
+    {
+      "name": "PipelineStage",
+      "kind": "enum",
+      "signature": "class PipelineStage(StrEnum):\n    ACQUISITION = 'acquisition'\n    ENRICHMENT = 'enrichment'\n    ANALYSIS = 'analysis'",
+      "description": "Declaration order is execution order, so list(PipelineStage) is the pipeline. Values are byte-identical to the run_events.stage and run_stages.stage strings and to the stage names in the run_stages CHECK constraint."
+    },
+    {
+      "name": "RUN_LEVEL_STAGE",
+      "kind": "constant",
+      "signature": "RUN_LEVEL_STAGE: Final[str] = 'pipeline'",
+      "description": "The run_events.stage value used for run-level records (preflight, run started, run finished, cancellation requested). Deliberately not a PipelineStage member because it is not executable and must never appear in run_stages."
+    },
+    {
+      "name": "PipelineConfig",
+      "kind": "dataclass",
+      "fields": [
+        "start_stage: PipelineStage = PipelineStage.ACQUISITION",
+        "max_catalog_pages: int | None = None",
+        "request_budget_override: int | None = None",
+        "notes: str | None = None"
+      ],
+      "description": "Only what varies per run and is not a formulation parameter. Everything in FORMULATION.md reaches the pipeline through config/parameters.toml and is not settable here or from the UI. start_stage drives both resume and a deliberate stage re-run after a parameter change. max_catalog_pages is the smoke-test limiter already present in acquisition.fetch_steamspy_catalog. request_budget_override supersedes AcquisitionConfig.request_budget when set and is None otherwise. notes is free user text persisted to the existing runs.notes column. Serialized into runs.config_json via to_dict/from_dict."
+    },
+    {
+      "name": "PipelineResult",
+      "kind": "dataclass",
+      "fields": [
+        "run_id: str",
+        "status: str",
+        "stages_run: list[PipelineStage]",
+        "acquisition: AcquisitionReport | None",
+        "enrichment: EnrichmentReport | None",
+        "analysis: AnalysisReport | None",
+        "started_at: datetime",
+        "finished_at: datetime",
+        "duration_seconds: float",
+        "error_message: str | None"
+      ]
+    },
+    {
+      "name": "run_pipeline",
+      "kind": "function",
+      "signature": "def run_pipeline(conn: sqlite3.Connection, run_id: str, config: PipelineConfig, *, settings: Settings | None = None, cancel_token: threading.Event | None = None) -> PipelineResult",
+      "description": "Synchronous execution on the caller's thread using the caller's connection, which the caller owns and closes. Loads settings and parameters, runs the ADR-013 preflight, then executes each stage from config.start_stage to the end of the enum. Records terminal status for both the stage and the run, then re-raises, so tests and any future CLI caller observe the original exception. This is the function the worker thread calls."
+    },
+    {
+      "name": "start_pipeline_async",
+      "kind": "function",
+      "signature": "def start_pipeline_async(db_path: Path, config: PipelineConfig, *, settings: Settings | None = None) -> str",
+      "description": "Creates the run row on the calling thread through a short-lived connection, registers a cancellation token, starts a non-daemon worker thread, and returns run_id immediately so the UI can begin polling. Never accepts and never returns a sqlite3.Connection. The worker opens its own connection as its first statement and closes it in a finally. The worker catches every exception rather than re-raising, because an exception escaping a thread target is invisible."
+    },
+    {
+      "name": "resume_run",
+      "kind": "function",
+      "signature": "def resume_run(db_path: Path, run_id: str, *, settings: Settings | None = None) -> str",
+      "description": "Resumes an existing run in place. Reads run_stages, finds the first stage in pipeline order whose status is not 'succeeded', rebuilds PipelineConfig from runs.config_json with start_stage set to that stage, then starts a worker exactly as start_pipeline_async does. Returns the same run_id: no new run row, no new run_id, and parent_run_id is untouched. Raises PipelineError if the run is unknown, is already running, or has all three stages succeeded."
+    },
+    {
+      "name": "cancel_run",
+      "kind": "function",
+      "signature": "def cancel_run(run_id: str) -> bool",
+      "description": "Sets the in-process cancellation event for run_id and appends a RUN_LEVEL_STAGE event recording the request. Returns False as an idempotent no-op when no live worker is registered for that run_id. Does not block waiting for the worker to stop and does not itself change runs.status; the worker writes the 'cancelled' status when it unwinds."
+    },
+    {
+      "name": "is_running",
+      "kind": "function",
+      "signature": "def is_running(run_id: str) -> bool",
+      "description": "True when a live worker thread is registered for run_id in this process."
+    },
+    {
+      "name": "active_run_ids",
+      "kind": "function",
+      "signature": "def active_run_ids() -> list[str]",
+      "description": "Run ids with a live worker. Used by the UI to decide whether to offer Cancel or Resume, and by reconcile_orphaned_runs."
+    },
+    {
+      "name": "reconcile_orphaned_runs",
+      "kind": "function",
+      "signature": "def reconcile_orphaned_runs(conn: sqlite3.Connection) -> list[str]",
+      "description": "Called once at UI startup. Any run whose runs.status is 'pending' or 'running' but which has no live worker in this process is marked failed with error_message 'process terminated before completion', and any of its run_stages rows left at 'running' are marked failed likewise. Returns the reconciled run ids. This is what makes a run killed by a process restart resumable rather than permanently stuck."
+    },
+    {
+      "name": "make_event_sink",
+      "kind": "function",
+      "signature": "def make_event_sink(conn: sqlite3.Connection, run_id: str, *, cancel_token: threading.Event | None = None) -> EventSink",
+      "description": "Builds the concrete storage.EventSink the stage entry points receive. Wraps storage.append_run_event, adds throttling so a per-app loop cannot write one row per request, and is the single place that decides event granularity."
+    },
+    {"name": "PipelineError", "kind": "exception", "description": "Base for this module. Raised for invalid resume requests and other orchestration-level misuse."},
+    {"name": "PipelineCancelled", "kind": "exception", "description": "Subclass of PipelineError. Raised at a cancellation check-point. Carries the stage it was raised in."},
+    {"name": "PreflightError", "kind": "exception", "description": "Subclass of PipelineError. Raised when the ADR-013 parameters.toml / FORMULATION.md consistency check fails, or when config.load_parameters raises ParameterError. Raised after the run row exists so the failure is visible in the run list, but before any stage begins."}
+  ],
+  "persistence": {
+    "reads": ["runs", "run_stages", "config/parameters.toml", ".env"],
+    "writes": ["runs", "run_stages", "run_events"]
+  },
+  "execution_contract": {
+    "order": ["acquisition", "enrichment", "analysis"],
+    "per_stage_sequence": [
+      "check cancellation (CP1)",
+      "storage.begin_run_stage -> status 'running', attempt incremented, committed",
+      "call the stage entry point with the shared EventSink and cancel token",
+      "let the stage commit its own data writes",
+      "storage.finish_run_stage -> 'succeeded', committed last",
+      "append a stage-complete run_event, last of all"
+    ],
+    "preflight": [
+      "storage.create_run (run row exists before anything can fail, so every failure is visible in the run list)",
+      "config.load_settings and config.load_parameters",
+      "parameters.toml / FORMULATION.md consistency check (ADR-013) - runs on resume too, so a resume cannot silently continue against a hand-edited parameter file",
+      "storage.initialize_schema / migrate to the current version"
+    ],
+    "stage_entry_points": {
+      "acquisition": "acquisition.run_acquisition(conn, run_id, acquisition_config, settings, on_event=sink) -> AcquisitionReport",
+      "enrichment": "enrichment.run_enrichment(conn, run_id, enrichment_params, parameters_version=..., on_event=sink) -> EnrichmentReport",
+      "analysis": "analysis.run_analysis(conn, run_id, analysis_params, parameters_version=..., on_event=sink) -> AnalysisReport"
+    }
+  },
+  "cancellation": {
+    "mechanism": "A module-level registry _CANCEL_REGISTRY: dict[str, threading.Event] guarded by a threading.Lock, populated by start_pipeline_async / resume_run and removed in the worker's finally. In-memory is sufficient because ADR-002 and ADR-006 put the UI and the pipeline in one process; if the process dies the run dies with it and reconcile_orphaned_runs cleans up.",
+    "checkpoints": [
+      "CP1 - run_pipeline, immediately before each stage begins, after the previous stage's run_stages row is committed",
+      "CP2 - acquisition SteamSpy bulk loop, after each page's payloads are persisted and committed, before the next RateLimiter.acquire()",
+      "CP3 - acquisition appdetails loop, after each batch of appids is persisted and committed, before the next batch's first RateLimiter.acquire()",
+      "CP4 - acquisition review-summary loop, identical placement to CP3",
+      "CP5 - inside RateLimiter.acquire(), whose wait is implemented as cancel_token.wait(remaining_interval); if it wakes because of cancellation it raises PipelineCancelled before consuming a token and before any socket is opened",
+      "CP6 - enrichment, between processed chunks of the feature frame",
+      "CP7 - analysis, between named sub-steps: simplicity filter, cluster_tags, compute_demand, compute_competition_density, compute_tag_trends, build_opportunity_matrix"
+    ],
+    "safety_rules": [
+      "Cancellation is never checked between RateLimiter.acquire() returning and the request being issued; a consumed token is always spent on a real request",
+      "An in-flight HTTP request is never aborted. The response body is always read to completion so the pooled connection is returned to the session clean",
+      "The only interruptible wait is CP5, and it raises before the request is issued, so no partially-sent request can exist",
+      "Every check-point sits after a committed unit of work, so cancellation never discards data that the UI has already been told about"
+    ],
+    "latency_bound": "Worst-case time from cancel_run to the worker unwinding is one in-flight HTTP request timeout plus one batch persist. Both are bounded by Settings.http_timeout_seconds and the batch size, so the UI can state a bound rather than an indefinite wait.",
+    "unwind": "PipelineCancelled propagates to run_pipeline, whose finally writes finish_run_stage(stage, 'cancelled') and update_run_status(run_id, 'cancelled'). Committed partial data is kept, never rolled back, and the run remains resumable."
+  },
+  "terminal_status_mapping": [
+    {"exception": "PipelineCancelled", "source": "cooperative cancellation check-point", "run_status": "cancelled", "stage_status": "cancelled", "partial_data": "kept", "error_message": "'cancelled by user during {stage}'"},
+    {"exception": "KeyboardInterrupt / SystemExit", "source": "process signal", "run_status": "cancelled", "stage_status": "cancelled", "partial_data": "kept", "error_message": "'interrupted during {stage}'", "note": "status is written, then the BaseException is re-raised so the interpreter still exits"},
+    {"exception": "PreflightError (wraps ParameterError or a parameter-consistency mismatch)", "source": "config / ADR-013 check", "run_status": "failed", "stage_status": "no stage row exists", "partial_data": "none", "error_message": "the validation message naming the offending key"},
+    {"exception": "RequestBudgetExceeded", "source": "acquisition", "run_status": "failed", "stage_status": "failed", "partial_data": "kept", "error_message": "budget value and requests made"},
+    {"exception": "AcquisitionError (any other)", "source": "acquisition", "run_status": "failed", "stage_status": "failed", "partial_data": "kept"},
+    {"exception": "EnrichmentError", "source": "enrichment", "run_status": "failed", "stage_status": "failed", "partial_data": "kept, raw_games intact"},
+    {"exception": "AnalysisError", "source": "analysis", "run_status": "failed", "stage_status": "failed", "partial_data": "kept"},
+    {"exception": "StorageError", "source": "storage", "run_status": "failed on a best-effort basis", "stage_status": "failed on a best-effort basis", "partial_data": "whatever was committed", "note": "if the status write itself is the failing path, log to stderr and give up rather than looping"},
+    {"exception": "any other Exception", "source": "anywhere", "run_status": "failed", "stage_status": "failed", "partial_data": "kept", "error_message": "type and message"}
+  ],
+  "status_rules": [
+    "error_message format is fixed: '{stage}: {ExceptionType}: {message}', truncated to a sane length. The full traceback is appended as a separate run_event at level 'error' rather than being squeezed into the column.",
+    "A run reaches 'succeeded' only when all three run_stages rows have status 'succeeded'.",
+    "No new runs.status value is introduced for partial success. Degraded-but-complete outcomes stay 'succeeded' and are surfaced numerically; incomplete outcomes are 'failed' or 'cancelled' and are surfaced through reporting.is_partial (ADR-016).",
+    "Per-app fetch failures inside a successful acquisition do not fail the run; they are reported through AcquisitionReport.detail_failed and reporting.FunnelSummary.",
+    "Exception: candidate_count > 0 while detail_fetched == 0 is a total acquisition failure, not an empty result. acquisition raises AcquisitionError and the run is 'failed'.",
+    "candidate_count == 0 after the coarse filter is a legitimate 'succeeded' run with empty downstream results and a warning event."
+  ],
+  "thread_contract": {
+    "rules": [
+      "A sqlite3.Connection never crosses a thread boundary. start_pipeline_async and resume_run take a Path and never accept or return a connection.",
+      "start_pipeline_async opens a short-lived connection on the calling thread to create the run row, commits, closes it, and only then starts the worker.",
+      "The worker thread's target opens its own connection with storage.connect() as its very first statement and closes it in a finally, around the run_pipeline call.",
+      "Worker threads are non-daemon so interpreter shutdown waits for a clean unwind and a terminal status write.",
+      "run_pipeline itself is connection-agnostic and thread-agnostic: it uses whatever connection it is handed, which is what makes the whole pipeline testable synchronously with no threads at all."
+    ],
+    "read_consistency": [
+      "WAL gives the polling reader a snapshot of the last commit and stops readers and the writer from blocking each other, but it is necessary rather than sufficient.",
+      "Reader side: connections are autocommit and short-lived, one per Streamlit rerun. A long-lived open read transaction would pin a stale snapshot and polling would never advance.",
+      "Writer side: the data of a unit of work is committed before the run_events row or run_stages / runs status that announces it. Without this ordering, WAL would faithfully deliver a 'stage complete' event whose data is not yet committed, which is the actual torn-read hazard here.",
+      "Consequence the UI can rely on: any stage reported as 'succeeded' has all of its data already visible to a new reader."
+    ]
+  },
+  "invariants": [
+    "The run row exists before any code that can fail runs, so no failure is invisible in the run list",
+    "Every stage transition is recorded in run_stages; a stage never runs without begin_run_stage first",
+    "finish_run_stage and update_run_status are the last writes of their unit of work, never the first",
+    "Cancellation is only ever observed at one of the seven enumerated check-points",
+    "A cancelled or failed run is left resumable: no committed data is rolled back on the way out",
+    "resume_run never creates a new run_id and never writes parent_run_id",
+    "This module contains no data transformation, no SQL and no HTTP call",
+    "The parameter-consistency preflight runs on every execution path, including resume"
+  ],
+  "edge_cases": [
+    "resume_run on a run with all three stages succeeded -> PipelineError; the user wants a new run, which is a different action",
+    "resume_run on a run already registered as running -> PipelineError, no second worker is started",
+    "resume_run on a run whose stages are all absent (created but never started) -> resumes from acquisition, which is the normal path after a crash during preflight",
+    "resume_run after parameters.toml changed since the original run -> preflight passes only if parameters.toml still matches FORMULATION.md; the resumed stages are stamped with the current parameters_version, so a resumed run can carry two parameters_version values across its derived rows. This is recorded as a warning event rather than blocked",
+    "cancel_run for an unknown or already-finished run -> returns False, no exception, no status change",
+    "cancel_run called twice -> second call is a no-op, the Event is already set",
+    "cancel_run arriving between two stages -> caught at CP1, the next stage never begins",
+    "cancel_run arriving during the preflight -> checked once after the preflight; the run ends 'cancelled' with no stage rows",
+    "Process killed mid-run -> runs.status stays 'running' until reconcile_orphaned_runs marks it failed at next startup, after which it is resumable",
+    "Two workers for the same run_id -> impossible by construction; registration into _CANCEL_REGISTRY is the mutual-exclusion point and happens under the lock before the thread starts",
+    "start_stage set to ANALYSIS on a run with no enriched rows -> the analysis stage handles an empty input per its own spec and succeeds with empty results plus a warning; orchestration does not pre-validate stage inputs",
+    "The stage entry point returns normally but wrote nothing (empty candidate set) -> 'succeeded', not 'failed'",
+    "storage.finish_run_stage raising while unwinding another exception -> the original exception is preserved and the storage failure is logged, never swallowing the root cause"
+  ],
+  "testing": {
+    "unit": [
+      "list(PipelineStage) is exactly the execution order and every value matches the run_stages CHECK constraint literals",
+      "PipelineConfig round-trips through to_dict / from_dict and through runs.config_json",
+      "run_pipeline with start_stage=ENRICHMENT never calls acquisition (stage entry points injected as stubs)",
+      "run_pipeline writes begin_run_stage before the stage call and finish_run_stage after it, in that order, asserted on a recording connection wrapper",
+      "the write-ordering rule holds: for each stage, the data write commit precedes the finish_run_stage commit which precedes the stage-complete event",
+      "each exception type in terminal_status_mapping produces exactly the specified runs.status and run_stages.status, driven by a parametrised stub stage that raises it",
+      "an unexpected Exception yields status 'failed' and the full traceback appears as an error-level run_event, not in runs.error_message",
+      "KeyboardInterrupt sets status 'cancelled' and is re-raised",
+      "a run reaches 'succeeded' only when all three stages succeeded; a stubbed two-of-three success yields 'failed'",
+      "PreflightError leaves the run row present, status 'failed', and no run_stages rows",
+      "cancellation at CP1 stops the pipeline before the next stage's begin_run_stage",
+      "a stub stage that polls the token at CP6/CP7 unwinds with status 'cancelled' and its committed rows survive",
+      "cancel_run returns False for an unknown run_id and True for a registered one, and is idempotent",
+      "RateLimiter CP5 behaviour: with a pre-set cancel token, acquire() raises PipelineCancelled without consuming a token and without issuing a request (asserted against a recording HTTP stub that must see zero calls)",
+      "resume_run picks the first non-succeeded stage for every combination of the three stage statuses (table-driven)",
+      "resume_run raises PipelineError for all-succeeded, unknown and already-running runs",
+      "resume_run returns the same run_id and creates no second run row",
+      "reconcile_orphaned_runs marks an orphaned 'running' run failed and leaves a genuinely live run untouched",
+      "start_pipeline_async never receives or returns a connection; passing one is a type error caught by the signature and asserted by a unit test on the worker's own connection identity"
+    ],
+    "integration": [
+      "a full three-stage run against stubbed HTTP and a temp database produces the expected run_stages rows, event sequence and terminal status",
+      "a run failed in enrichment, then resumed, completes without any further HTTP call being made (asserted on a recording HTTP stub that must see zero requests during the resume)",
+      "a run cancelled mid-acquisition and then resumed fetches only the appids that were still missing"
+    ],
+    "fixtures": ["tests/fixtures/pipeline_stub_stages.py", "tests/fixtures/db_schema_v1.sqlite"],
+    "policy": "No test may start a real network call, and no test may sleep on wall-clock time; the rate limiter's clock and wait are injected."
+  },
+  "non_goals": [
+    "No scheduler, no cron, no automatic re-crawl (ADR-006). trigger_type stays 'manual'",
+    "No cross-run incremental fetch; parent_run_id remains reserved and unused (ADR-014)",
+    "No within-stage checkpointing finer than 'appids already persisted for this run'",
+    "No parallel stages and no more than one live worker per run_id",
+    "No multi-process execution; the cancellation registry is in-process by design",
+    "No Streamlit import; the module must be runnable and testable headless",
+    "No business logic, no SQL, no HTTP"
+  ],
+  "open_questions": [
+    "Event throttling granularity in make_event_sink: one event per N apps or one per T seconds. Affects run_events table growth on a multi-thousand-app run",
+    "Whether a resumed run that spans two parameters_version values should be flagged in the UI more loudly than a warning event"
+  ]
+}

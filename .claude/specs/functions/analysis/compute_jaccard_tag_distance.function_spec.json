@@ -1,0 +1,30 @@
+{
+  "module": "analysis",
+  "function_name": "compute_jaccard_tag_distance",
+  "file_path": "src/steam_analyst/analysis/clustering.py",
+  "description": "Builds the Jaccard tag-distance matrix that cluster_tags feeds into agglomerative clustering, per FORMULATION.md section 6's locked clustering method (Jaccard tag-distance, no genre anchor). Factored out as its own testable unit since the matrix construction (which entities are the clustered 'points', and how per-game tag sets become per-tag co-occurrence vectors) is a distinct, independently verifiable step from the clustering call itself.",
+  "signature": "def compute_jaccard_tag_distance(tags: pd.DataFrame) -> pd.DataFrame",
+  "docstring": "Build a tag-by-tag Jaccard distance matrix from tag co-occurrence.\n\nArgs:\n    tags: game_tags-shaped rows (appid, tag, votes, rank) for the run's candidate set, already filtered to tags with votes >= AnalysisParams.min_tag_votes by the caller (cluster_tags).\n\nReturns:\n    A square, symmetric DataFrame indexed and columned by the distinct tag strings present in `tags`, where cell (t1, t2) = 1 - |games(t1) ∩ games(t2)| / |games(t1) ∪ games(t2)| (Jaccard DISTANCE, i.e. 1 minus Jaccard similarity, so 0 = identical game sets, 1 = no games in common). Diagonal is exactly 0.0 for every tag against itself.\n\nNote:\n    'Games' here means each tag's SET OF APPIDS that carry it (after the min_tag_votes and max_tags_per_game filtering already applied upstream in extract_tags/the caller) -- clustering groups TAGS into archetypes based on how similarly they co-occur across games, and cluster_tags subsequently assigns each GAME to an archetype via its own tags' cluster memberships (majority/plurality vote among a game's tags' clusters -- see cluster_tags for that assignment rule). This two-step tag-then-game structure is this spec's own interpretation of 'archetype is a tag cluster... not a single tag' (FORMULATION.md section 6); the module_spec.json does not spell out this tag-vs-game clustering distinction explicitly.\n",
+  "preconditions": [
+    "tags has no duplicate (appid, tag) pairs",
+    "Every distinct tag in tags is associated with at least one appid (trivially true by construction)"
+  ],
+  "postconditions": [
+    "The returned matrix is symmetric: D[t1,t2] == D[t2,t1]",
+    "Every diagonal entry is exactly 0.0",
+    "Every off-diagonal entry is in [0.0, 1.0]"
+  ],
+  "edge_cases": [
+    {"input": "Two tags that always co-occur on exactly the same set of games", "expected_behavior": "distance 0.0 between them"},
+    {"input": "Two tags that never co-occur on any game", "expected_behavior": "distance 1.0 between them"},
+    {"input": "A tag used by exactly one game", "expected_behavior": "still produces valid, finite distances against every other tag (Jaccard is well-defined as long as the union is non-empty, which it always is for two tags each used by at least one game)"},
+    {"input": "tags is empty (zero rows)", "expected_behavior": "returns an empty (0x0) DataFrame, not an error"}
+  ],
+  "unit_tests": [
+    {"name": "test_identical_game_sets_zero_distance", "description": "Two tags applied to exactly the same 3 games have distance 0.0.", "inputs": {}, "expected": 0.0},
+    {"name": "test_disjoint_game_sets_max_distance", "description": "Two tags applied to completely disjoint game sets have distance 1.0.", "inputs": {}, "expected": 1.0},
+    {"name": "test_matrix_is_symmetric", "description": "For a synthetic multi-tag fixture, D equals its own transpose.", "inputs": {}, "expected": "D.equals(D.T)"},
+    {"name": "test_empty_tags_returns_empty_matrix", "description": "An empty tags frame returns a 0x0 DataFrame.", "inputs": {"tags": []}, "expected": "0x0 DataFrame"}
+  ],
+  "dependencies": []
+}

@@ -1,0 +1,31 @@
+{
+  "module": "enrichment",
+  "function_name": "normalize_feature_log_scaled",
+  "file_path": "src/steam_analyst/enrichment/features.py",
+  "description": "Implements FORMULATION.md section 4's log-scaled per-feature normalizer n(x) = clip((log10(x+1) - a) / (b - a), 0, 1). Factored out as its own testable unit since it is applied identically to six of the nine complexity features (install size, early-access duration, dev catalog size, achievement count, DLC count, language count) and is exactly the kind of small pure-math function whose boundary behaviour (x=0, x at bound a or b, b==a) needs its own dedicated tests independent of the larger compute_complexity_score composition.",
+  "signature": "def normalize_feature_log_scaled(x: float, a: float, b: float) -> float",
+  "docstring": "Normalize one raw feature value to [0, 1] via a log10 scale.\n\nArgs:\n    x: Raw feature value, x >= 0 (a count or byte size; log10(x+1) keeps x=0 finite).\n    a: Lower normalization bound (on the log10(x+1) scale), from EnrichmentParams.complexity_bounds, typically the run 1 empirical 5th percentile.\n    b: Upper normalization bound, typically the run 1 empirical 95th percentile.\n\nReturns:\n    clip((log10(x+1) - a) / (b - a), 0, 1).\n\nRaises:\n    ValueError: If b == a (degenerate bounds would divide by zero) -- callers (compute_complexity_score) must treat an unfrozen/degenerate bound pair as 'feature not normalizable yet' and route to median imputation instead of calling this function, per EnrichmentParams.complexity_bounds' documented pre-freeze behaviour.\n",
+  "preconditions": [
+    "x >= 0",
+    "b != a"
+  ],
+  "postconditions": [
+    "Return value is always in [0.0, 1.0] inclusive",
+    "Monotonically non-decreasing in x for fixed a, b"
+  ],
+  "edge_cases": [
+    {"input": "x=0", "expected_behavior": "log10(1)=0; result is clip((0-a)/(b-a), 0, 1), typically 0.0 if a<=0"},
+    {"input": "x such that log10(x+1) == a exactly", "expected_behavior": "returns exactly 0.0"},
+    {"input": "x such that log10(x+1) == b exactly", "expected_behavior": "returns exactly 1.0"},
+    {"input": "x far beyond b (an extreme outlier)", "expected_behavior": "clipped to 1.0, not extrapolated beyond the bound"},
+    {"input": "b == a", "expected_behavior": "raises ValueError rather than returning NaN or raising a bare ZeroDivisionError"},
+    {"input": "x negative (should not occur for the features this is applied to)", "expected_behavior": "ValueError -- defensively rejected rather than silently producing a negative log argument error"}
+  ],
+  "unit_tests": [
+    {"name": "test_clips_at_zero_and_one", "description": "Values at and beyond a and b clip exactly to 0.0 and 1.0.", "inputs": {"x": 0, "a": 1.0, "b": 5.0}, "expected": 0.0},
+    {"name": "test_midpoint_value", "description": "A value exactly halfway between a and b on the log scale returns 0.5.", "inputs": {"x": "10**3 - 1", "a": 0.0, "b": 6.0}, "expected": 0.5},
+    {"name": "test_degenerate_bounds_raises", "description": "a == b raises ValueError.", "inputs": {"x": 10, "a": 2.0, "b": 2.0}, "expected": "ValueError"},
+    {"input": "negative x raises ValueError", "name": "test_negative_x_raises", "description": "x < 0 raises ValueError.", "inputs": {"x": -1, "a": 0.0, "b": 5.0}, "expected": "ValueError"}
+  ],
+  "dependencies": []
+}

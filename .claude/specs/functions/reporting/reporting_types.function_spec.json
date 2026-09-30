@@ -1,0 +1,25 @@
+{
+  "module": "reporting",
+  "function_name": "reporting_types (Caveat, CaseStudySelection, ReportNotAvailable)",
+  "file_path": "src/steam_analyst/reporting/types.py",
+  "description": "Bundled type-spec for reporting's smallest, logic-free types: the Caveat and CaseStudySelection dataclasses and the ReportNotAvailable exception. Grouped into one file (RunReport, CaseStudy and FunnelSummary each get their own file since they carry real structural/derivation logic worth documenting at length; these do not).",
+  "signature": "@dataclass(frozen=True)\nclass Caveat:\n    key: str\n    title: str\n    body: str\n    severity: str\n\n@dataclass(frozen=True)\nclass CaseStudySelection:\n    case_studies: list[CaseStudy]\n    archetype_cap_relaxed: bool\n\nclass ReportNotAvailable(Exception): ...",
+  "docstring": "Caveat: One fixed interpretive caveat (ARCHITECTURE.md 'Known Limitations' item). key is a stable identifier (e.g. 'steamspy_owner_confidence', 'boxleiter_approximation', 'simplicity_proxy', 'no_scraping_demand_gap', 'survivorship_bias', 'competition_historical', 'coarse_filter_boundary' -- one per limitation 1-7, plus the dynamic 'archetype_cap_relaxed' key that select_case_studies can trigger). severity is one of 'info' | 'warning', all seven ARCHITECTURE.md limitations being informational-but-important rather than error-level, since they describe the method, not a run defect.\n\nCaseStudySelection: select_case_studies' return type. Wraps the ranked, diversity-capped case_studies list together with archetype_cap_relaxed, a bool recording whether the one-time max_per_archetype+1 relaxation fired. load_run_report unwraps this: RunReport.case_studies is assigned selection.case_studies directly (a plain list[CaseStudy], so RunReport's own shape is unaffected), and when archetype_cap_relaxed is True, load_run_report appends one extra Caveat(key='archetype_cap_relaxed', severity='info') to RunReport.caveats.\n\nReportNotAvailable: Raised by load_run_report when run_id does not exist at all (storage.get_run returns None). NOT raised for a run that exists but has no analysis results yet (that is the is_partial=True path) -- ReportNotAvailable specifically means 'no such run', not 'run incomplete'.\n",
+  "preconditions": [
+    "Caveat.severity in {'info', 'warning'}",
+    "Caveat.key values are unique across the fixed set returned by interpretive_caveats"
+  ],
+  "postconditions": [
+    "interpretive_caveats() always returns Caveat instances with stable, never-renamed key values across code versions, since the UI may persist/reference them by key",
+    "ReportNotAvailable's message names the run_id that was not found"
+  ],
+  "edge_cases": [
+    {"input": "A Caveat with severity='error'", "expected_behavior": "not produced by interpretive_caveats in v1; 'error' is not in the allowed severity set for this fixed, method-level caveat list"},
+    {"input": "load_run_report(run_id='does-not-exist')", "expected_behavior": "raises ReportNotAvailable('does-not-exist')"}
+  ],
+  "unit_tests": [
+    {"name": "test_caveat_severity_constrained", "description": "Every Caveat produced by interpretive_caveats has severity in {'info','warning'}.", "inputs": {}, "expected": "all severities valid"},
+    {"name": "test_reportnotavailable_message_contains_run_id", "description": "str(ReportNotAvailable('r1')) contains 'r1'.", "inputs": {}, "expected": "message contains 'r1'"}
+  ],
+  "dependencies": []
+}

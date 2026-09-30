@@ -1,0 +1,22 @@
+{
+  "module": "reporting",
+  "function_name": "FunnelSummary",
+  "file_path": "src/steam_analyst/reporting/types.py",
+  "description": "Makes the coarse filter's hard boundary visible in the UI, per ARCHITECTURE.md limitation 7.",
+  "signature": "@dataclass(frozen=True)\nclass FunnelSummary:\n    catalog_size: int\n    candidate_count: int\n    simple_subset_size: int\n    rejected_by_reason: dict[str, int]",
+  "docstring": "Presentation-ready funnel summary for one run.\n\nAttributes:\n    catalog_size: From analysis_results['funnel_report'] (acquisition.FunnelResult.total_input, persisted via write_analysis_result in run_acquisition).\n    candidate_count: acquisition.FunnelResult candidate count.\n    simple_subset_size: analysis.AnalysisReport.simple_subset_size.\n    rejected_by_reason: acquisition.FunnelResult.rejected_by_reason, merged for display with analysis's simplicity-stage rejected_by_reason under distinctly prefixed keys (e.g. 'coarse_filter.review_count_below_floor' vs 'simplicity_filter.above_simplicity_threshold') so the two funnel stages are not conflated in one flat dict.\n",
+  "preconditions": [],
+  "postconditions": [
+    "simple_subset_size <= candidate_count <= catalog_size",
+    "rejected_by_reason keys are unambiguously prefixed by stage"
+  ],
+  "edge_cases": [
+    {"input": "A run whose acquisition stage failed before completing (no funnel_report yet)", "expected_behavior": "load_run_report constructs FunnelSummary with catalog_size=0, candidate_count=0, an empty rejected_by_reason, and relies on RunReport.is_partial=True to signal the incompleteness to the UI rather than raising"},
+    {"input": "candidate_count == catalog_size (an implausibly permissive coarse filter)", "expected_behavior": "rendered as-is; reporting does not second-guess or reject an unusual-looking funnel, only displays it"}
+  ],
+  "unit_tests": [
+    {"name": "test_funnel_summary_ordering_invariant", "description": "For a normal completed run fixture, simple_subset_size <= candidate_count <= catalog_size holds.", "inputs": {}, "expected": "ordering holds"},
+    {"name": "test_missing_funnel_report_yields_zeroed_summary", "description": "A run with no funnel_report analysis_results row yields an all-zero FunnelSummary rather than raising.", "inputs": {}, "expected": "catalog_size==candidate_count==0"}
+  ],
+  "dependencies": []
+}

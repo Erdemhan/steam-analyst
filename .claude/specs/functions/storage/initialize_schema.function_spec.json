@@ -1,0 +1,27 @@
+{
+  "module": "storage",
+  "function_name": "initialize_schema",
+  "file_path": "src/steam_analyst/storage/schema.py",
+  "description": "Creates all tables, indexes and the schema_meta bookkeeping row if absent. Idempotent: safe to call on every process start.",
+  "signature": "def initialize_schema(conn: sqlite3.Connection) -> None",
+  "docstring": "Create the full schema (schema_meta, runs, run_events, raw_games, games_enriched, game_tags, analysis_results and all indexes from 01_storage.module_spec.json) if it does not already exist.\n\nArgs:\n    conn: An open connection from get_connection.\n\nReturns:\n    None.\n\nRaises:\n    StorageError: If table creation fails for a reason other than 'already exists' (e.g. a conflicting, incompatible table already present under the same name with a different shape).\n",
+  "preconditions": [
+    "conn was opened by get_connection (pragmas already applied)"
+  ],
+  "postconditions": [
+    "All seven tables and five indexes listed in the module spec's schema.tables / schema.indexes exist",
+    "schema_meta contains exactly one row with version == current_schema_version(conn) after a fresh initialization",
+    "Calling initialize_schema twice in a row is a no-op the second time and does not raise"
+  ],
+  "edge_cases": [
+    {"input": "Called on a brand-new, empty database file", "expected_behavior": "creates everything and inserts the initial schema_meta row"},
+    {"input": "Called on a database that already has the current schema", "expected_behavior": "no-op, returns None, does not duplicate schema_meta rows"},
+    {"input": "Called on a database with a table of the same name but an incompatible column set (corrupted/foreign file)", "expected_behavior": "StorageError, does not silently drop or alter the existing table"}
+  ],
+  "unit_tests": [
+    {"name": "test_creates_all_tables_and_indexes", "description": "Against a fresh in-memory database, all seven tables and five indexes appear in sqlite_master.", "inputs": {}, "expected": "seven table names and five index names present"},
+    {"name": "test_idempotent_second_call", "description": "Calling twice does not raise and leaves exactly one schema_meta row.", "inputs": {}, "expected": "one schema_meta row, no exception"},
+    {"name": "test_conflicting_table_raises", "description": "A pre-existing incompatible 'runs' table raises StorageError.", "inputs": {}, "expected": "StorageError"}
+  ],
+  "dependencies": ["get_connection"]
+}

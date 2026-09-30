@@ -1,0 +1,119 @@
+{
+  "module_id": "storage",
+  "spec_version": "0.2.0",
+  "status": "planned",
+  "package_path": "src/steam_analyst/storage",
+  "responsibility": "Own the SQLite schema, migrations and every read/write path for runs, per-stage run status, raw payloads, enriched features, tags and analysis results. No other module issues SQL.",
+  "changelog": [
+    "0.2.0 - Added the run_stages table and its three accessors to support stage-granular resume (ADR-014). Added the EventSink protocol, which acquisition, enrichment and analysis already type-hint against but which had no owning module. Added the write-ordering invariant required by ADR-016."
+  ],
+  "dependencies": {
+    "internal": ["config"],
+    "external": ["sqlite3 (stdlib)", "pandas"]
+  },
+  "schema": {
+    "pragmas": ["journal_mode=WAL", "foreign_keys=ON", "synchronous=NORMAL"],
+    "tables": {
+      "schema_meta": "version INTEGER NOT NULL, applied_at TEXT NOT NULL",
+      "runs": "run_id TEXT PRIMARY KEY, started_at TEXT NOT NULL, finished_at TEXT, status TEXT NOT NULL CHECK(status IN ('pending','running','succeeded','failed','cancelled')), trigger_type TEXT NOT NULL DEFAULT 'manual' CHECK(trigger_type IN ('manual','scheduled')), parent_run_id TEXT REFERENCES runs(run_id), config_json TEXT NOT NULL, parameters_version TEXT NOT NULL, code_version TEXT, error_message TEXT, notes TEXT",
+      "run_stages": "run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE, stage TEXT NOT NULL CHECK(stage IN ('acquisition','enrichment','analysis')), status TEXT NOT NULL CHECK(status IN ('pending','running','succeeded','failed','cancelled')), started_at TEXT, finished_at TEXT, attempt INTEGER NOT NULL DEFAULT 0, error_message TEXT, PRIMARY KEY (run_id, stage)",
+      "run_events": "event_id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE, ts TEXT NOT NULL, stage TEXT NOT NULL, level TEXT NOT NULL CHECK(level IN ('debug','info','warning','error')), message TEXT NOT NULL, progress REAL",
+      "raw_games": "run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE, appid INTEGER NOT NULL, source TEXT NOT NULL CHECK(source IN ('steamspy_all','steamspy_appdetails','steam_appdetails','steam_reviews')), fetched_at TEXT NOT NULL, http_status INTEGER NOT NULL, payload_json TEXT NOT NULL, payload_sha256 TEXT NOT NULL, PRIMARY KEY (run_id, appid, source)",
+      "games_enriched": "run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE, appid INTEGER NOT NULL, name TEXT, app_type TEXT, developer TEXT, publisher TEXT, release_date TEXT, price_usd REAL, is_free INTEGER, review_count INTEGER, review_positive_pct REAL, owners_estimate_low INTEGER, owners_estimate_mid INTEGER, owners_estimate_high INTEGER, size_bytes INTEGER, achievement_count INTEGER, language_count INTEGER, platform_count INTEGER, dlc_count INTEGER, dev_title_count INTEGER, is_early_access INTEGER, early_access_days INTEGER, deck_compat TEXT, genres_json TEXT, categories_json TEXT, complexity_score REAL, imputed_features_json TEXT, estimated_sales_low REAL, estimated_sales_mid REAL, estimated_sales_high REAL, estimated_revenue_gross_usd REAL, estimated_revenue_net_usd REAL, effort_adjusted_return REAL, parameters_version TEXT NOT NULL, PRIMARY KEY (run_id, appid)",
+      "game_tags": "run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE, appid INTEGER NOT NULL, tag TEXT NOT NULL, votes INTEGER, rank INTEGER, PRIMARY KEY (run_id, appid, tag)",
+      "analysis_results": "run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE, analysis_type TEXT NOT NULL, created_at TEXT NOT NULL, parameters_version TEXT NOT NULL, payload_json TEXT NOT NULL, PRIMARY KEY (run_id, analysis_type)"
+    },
+    "indexes": [
+      "idx_run_events_run_id ON run_events(run_id, event_id)",
+      "idx_raw_games_run_source ON raw_games(run_id, source)",
+      "idx_enriched_complexity ON games_enriched(run_id, complexity_score)",
+      "idx_enriched_release ON games_enriched(run_id, release_date)",
+      "idx_game_tags_tag ON game_tags(run_id, tag)"
+    ],
+    "index_notes": "run_stages needs no secondary index: its primary key (run_id, stage) already serves the only access pattern, which is 'all stages of one run'.",
+    "analysis_types": ["opportunity_matrix", "tag_summary", "tag_clusters", "tag_trends", "competition_density", "funnel_report", "case_studies"]
+  },
+  "public_interface": [
+    {"name": "get_connection", "kind": "function", "signature": "def get_connection(db_path: Path) -> sqlite3.Connection", "description": "Opens a connection with the required pragmas, in autocommit mode (isolation_level=None) so explicit transactions are started explicitly. One connection per thread; never share across threads."},
+    {"name": "connect", "kind": "function", "signature": "@contextmanager\ndef connect(db_path: Path) -> Iterator[sqlite3.Connection]", "description": "Context-manager form of get_connection that guarantees close() on exit. This is the form the UI uses once per Streamlit rerun and the form the pipeline worker thread uses for its own connection (ADR-016)."},
+    {"name": "initialize_schema", "kind": "function", "signature": "def initialize_schema(conn: sqlite3.Connection) -> None", "description": "Creates all tables and indexes if absent and stamps schema_meta. Idempotent. Does not pre-create run_stages rows; those are created lazily on first attempt of a stage."},
+    {"name": "current_schema_version", "kind": "function", "signature": "def current_schema_version(conn: sqlite3.Connection) -> int"},
+    {"name": "migrate", "kind": "function", "signature": "def migrate(conn: sqlite3.Connection, target_version: int | None = None) -> int", "description": "Applies ordered migrations inside a transaction. Returns the resulting version."},
+    {"name": "create_run", "kind": "function", "signature": "def create_run(conn: sqlite3.Connection, *, config: dict, parameters_version: str, trigger_type: str = 'manual', parent_run_id: str | None = None, code_version: str | None = None, notes: str | None = None) -> str", "description": "Inserts a run row with status 'pending' and returns the generated run_id (UTC timestamp prefix plus short random suffix, sortable and human-readable)."},
+    {"name": "update_run_status", "kind": "function", "signature": "def update_run_status(conn: sqlite3.Connection, run_id: str, status: str, *, finished_at: str | None = None, error_message: str | None = None) -> None", "description": "Committed immediately. Per the ADR-016 write-ordering rule this must be the last write of the unit of work it describes."},
+    {"name": "begin_run_stage", "kind": "function", "signature": "def begin_run_stage(conn: sqlite3.Connection, run_id: str, stage: str) -> int", "description": "Upserts the (run_id, stage) row to status 'running': sets started_at, clears finished_at and error_message, increments attempt, and returns the new attempt number. Committed immediately so the UI sees the stage transition. Re-attempting a stage that already succeeded is legal and is how resume and a post-parameter-change stage re-run work (ADR-009, ADR-014)."},
+    {"name": "finish_run_stage", "kind": "function", "signature": "def finish_run_stage(conn: sqlite3.Connection, run_id: str, stage: str, status: str, *, error_message: str | None = None) -> None", "description": "Writes the terminal status for one stage ('succeeded', 'failed' or 'cancelled') plus finished_at. Must be called only after that stage's own data writes have been committed (ADR-016)."},
+    {"name": "read_run_stages", "kind": "function", "signature": "def read_run_stages(conn: sqlite3.Connection, run_id: str) -> list[RunStage]", "description": "Returns one row per stage that has been attempted, ordered by pipeline order (acquisition, enrichment, analysis). A stage never attempted is absent from the list rather than synthesised as 'pending', so callers can distinguish 'not started' from 'started and pending'."},
+    {"name": "get_run", "kind": "function", "signature": "def get_run(conn: sqlite3.Connection, run_id: str) -> RunRecord | None"},
+    {"name": "list_runs", "kind": "function", "signature": "def list_runs(conn: sqlite3.Connection, *, limit: int = 50, offset: int = 0) -> pd.DataFrame", "description": "Run list for the Past Analyses page, newest first, with candidate counts joined in."},
+    {"name": "delete_run", "kind": "function", "signature": "def delete_run(conn: sqlite3.Connection, run_id: str) -> None", "description": "Explicit user action only. Cascades to all run-keyed tables including run_stages."},
+    {"name": "append_run_event", "kind": "function", "signature": "def append_run_event(conn: sqlite3.Connection, run_id: str, *, stage: str, level: str, message: str, progress: float | None = None) -> int", "description": "Append-only progress record. Committed immediately so a reader thread can observe it. Per ADR-016 it is written after the data it announces, never before."},
+    {"name": "read_run_events", "kind": "function", "signature": "def read_run_events(conn: sqlite3.Connection, run_id: str, *, since_event_id: int = 0) -> list[RunEvent]", "description": "Incremental read for UI polling. The caller keeps the highest event_id it has seen and passes it back."},
+    {"name": "EventSink", "kind": "protocol", "signature": "class EventSink(Protocol):\n    def __call__(self, *, stage: str, level: str, message: str, progress: float | None = None) -> None: ...", "description": "Structural type for the progress callback that orchestration passes into every stage entry point. acquisition.run_acquisition, enrichment.run_enrichment and analysis.run_analysis already type-hint their on_event parameter against this name. It is declared here rather than in orchestration because the stage modules must not import orchestration; that would invert the dependency direction. The concrete implementation is built by orchestration and normally wraps append_run_event."},
+    {"name": "upsert_raw_payloads", "kind": "function", "signature": "def upsert_raw_payloads(conn: sqlite3.Connection, run_id: str, payloads: Iterable[RawPayload]) -> int", "description": "Batched insert inside one transaction, INSERT OR IGNORE on the (run_id, appid, source) key. Returns rows written. The IGNORE semantics are what make re-running acquisition for the same run_id an insert-missing operation rather than an in-place update, so ADR-005 immutability holds while resume stays cheap."},
+    {"name": "read_raw_payloads", "kind": "function", "signature": "def read_raw_payloads(conn: sqlite3.Connection, run_id: str, source: str) -> Iterator[RawPayload]", "description": "Streams rows; must not materialize the whole catalog snapshot in memory."},
+    {"name": "read_fetched_appids", "kind": "function", "signature": "def read_fetched_appids(conn: sqlite3.Connection, run_id: str, source: str) -> set[int]", "description": "Appids already persisted for this run and source. acquisition uses it to skip work when a stage is re-attempted after a crash or cancellation (ADR-014)."},
+    {"name": "write_enriched", "kind": "function", "signature": "def write_enriched(conn: sqlite3.Connection, run_id: str, frame: pd.DataFrame) -> int", "description": "Replaces the run's enriched rows transactionally."},
+    {"name": "read_enriched", "kind": "function", "signature": "def read_enriched(conn: sqlite3.Connection, run_id: str, *, columns: Sequence[str] | None = None, where: str | None = None) -> pd.DataFrame"},
+    {"name": "write_tags", "kind": "function", "signature": "def write_tags(conn: sqlite3.Connection, run_id: str, rows: Iterable[TagRow]) -> int"},
+    {"name": "read_tags", "kind": "function", "signature": "def read_tags(conn: sqlite3.Connection, run_id: str, *, min_votes: int = 0) -> pd.DataFrame"},
+    {"name": "write_analysis_result", "kind": "function", "signature": "def write_analysis_result(conn: sqlite3.Connection, run_id: str, analysis_type: str, payload: dict, *, parameters_version: str) -> None", "description": "Upsert on (run_id, analysis_type), so re-running the analysis stage for an existing run replaces its prior outputs."},
+    {"name": "read_analysis_result", "kind": "function", "signature": "def read_analysis_result(conn: sqlite3.Connection, run_id: str, analysis_type: str) -> dict | None"},
+    {"name": "RunRecord", "kind": "dataclass", "fields": ["run_id: str", "started_at: datetime", "finished_at: datetime | None", "status: str", "trigger_type: str", "parent_run_id: str | None", "config: dict", "parameters_version: str", "code_version: str | None", "error_message: str | None", "notes: str | None"]},
+    {"name": "RunStage", "kind": "dataclass", "fields": ["run_id: str", "stage: str", "status: str", "started_at: datetime | None", "finished_at: datetime | None", "attempt: int", "error_message: str | None"]},
+    {"name": "RunEvent", "kind": "dataclass", "fields": ["event_id: int", "run_id: str", "ts: datetime", "stage: str", "level: str", "message: str", "progress: float | None"]},
+    {"name": "RawPayload", "kind": "dataclass", "fields": ["appid: int", "source: str", "fetched_at: datetime", "http_status: int", "payload: dict", "payload_sha256: str"]},
+    {"name": "TagRow", "kind": "dataclass", "fields": ["appid: int", "tag: str", "votes: int | None", "rank: int | None"]},
+    {"name": "StorageError", "kind": "exception"}
+  ],
+  "invariants": [
+    "raw_games rows are never updated in place; re-attempting a stage inserts only the rows that are missing, and a correction still requires a new run",
+    "All timestamps are stored as ISO-8601 UTC strings",
+    "Every write that spans more than one row runs inside a single transaction",
+    "run_id is sortable lexicographically by start time",
+    "Write ordering (ADR-016): the data of a unit of work is committed before the run_events record or run_stages / runs status that announces it. Status and event writes are always last, never first",
+    "run_stages rows are created lazily; a stage that was never attempted has no row at all",
+    "Connections are opened in autocommit mode so a polling reader never pins a stale WAL snapshot inside a long-lived implicit read transaction"
+  ],
+  "edge_cases": [
+    "Database file or parent directory missing -> created on first get_connection",
+    "Concurrent read while the pipeline writes -> supported via WAL; reader must tolerate a partially populated run",
+    "Connection reused across threads -> must raise, not silently corrupt (check thread identity)",
+    "Very large payload_json rows -> insert in batches; avoid loading all payloads at once",
+    "delete_run on an unknown run_id -> no-op, not an error",
+    "delete_run cascades to run_stages along with the other run-keyed tables",
+    "Empty enriched frame passed to write_enriched -> writes zero rows and returns 0 without raising",
+    "begin_run_stage on a stage whose row is already 'succeeded' -> attempt incremented, status reset to 'running', finished_at and error_message cleared; this is legal",
+    "finish_run_stage for a stage that was never begun -> StorageError, because it would record a terminal status with no start time",
+    "read_run_stages on a run where no stage was ever attempted -> empty list, not an error",
+    "upsert_raw_payloads re-inserting an appid/source already present for the run -> ignored, counted as zero rows written, never overwritten"
+  ],
+  "testing": {
+    "unit": [
+      "initialize_schema is idempotent and produces the expected table and index set, including run_stages",
+      "migrate from an older fixture database reaches the current version and preserves rows",
+      "create_run returns lexicographically sortable ids and round-trips through get_run",
+      "append_run_event / read_run_events with since_event_id returns only newer events",
+      "begin_run_stage increments attempt across repeated calls and read_run_stages returns stages in pipeline order",
+      "finish_run_stage records the terminal status and finished_at, and stores error_message only for failed or cancelled",
+      "finish_run_stage on a never-begun stage raises StorageError",
+      "upsert_raw_payloads stores payloads verbatim (byte-equal JSON round-trip) with correct sha256",
+      "upsert_raw_payloads is insert-missing: a second call with an overlapping batch writes only the new rows and leaves the existing payload bytes unchanged",
+      "read_fetched_appids returns exactly the appids persisted for that run and source",
+      "write_enriched then read_enriched preserves dtypes and NULL handling for missing features",
+      "delete_run cascades to run_stages, raw_games, games_enriched, game_tags, analysis_results and run_events",
+      "cross-thread connection use raises StorageError"
+    ],
+    "integration": ["a full write/read cycle of one small synthetic run across all tables, including a stage that is begun, failed, re-begun and then succeeded"],
+    "fixtures": ["tests/fixtures/db_schema_v1.sqlite"]
+  },
+  "non_goals": [
+    "No business logic, no derived value computation",
+    "No network access",
+    "No automatic pruning or retention policy",
+    "No knowledge of pipeline ordering beyond the stage name CHECK constraint; deciding which stage runs next is orchestration's job"
+  ],
+  "open_questions": [
+    "Should payload_json be zlib-compressed once the database exceeds a size threshold, or from the start?"
+  ]
+}

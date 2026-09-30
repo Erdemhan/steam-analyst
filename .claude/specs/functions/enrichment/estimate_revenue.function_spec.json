@@ -1,0 +1,27 @@
+{
+  "module": "enrichment",
+  "function_name": "estimate_revenue",
+  "file_path": "src/steam_analyst/enrichment/revenue.py",
+  "description": "Implements FORMULATION.md section 3. Gross/net revenue with delta=rho=0 locked, storefront cut tau=0.30 applied, and the locked F2P policy (kept, revenue NULL) enforced.",
+  "signature": "def estimate_revenue(sales: pd.DataFrame, price_usd: pd.Series, params: EnrichmentParams) -> pd.DataFrame",
+  "docstring": "Compute gross and net revenue bands.\n\nArgs:\n    sales: estimate_sales' output (estimated_sales_low/mid/high).\n    price_usd: P_i per appid; 0 for free-to-play titles.\n    params: EnrichmentParams.storefront_cut (tau), discount_factor (delta, locked 0.0), refund_regional_factor (rho, locked 0.0).\n\nReturns:\n    A DataFrame with estimated_revenue_gross_usd and estimated_revenue_net_usd (single columns, computed from the MID sales estimate only, per the games_enriched schema which has one gross/net column pair, not per-band -- the low/high bands remain available via estimated_sales_low/high for any caller that wants to derive a revenue range itself). gross = sales_mid * price_usd; net = gross * (1 - tau). Free-to-play rows (price_usd == 0, or more precisely the row's is_free flag) get NaN (rendered 'unknown', never 0) for both columns, per FORMULATION.md section 2's locked F2P policy.\n",
+  "preconditions": [
+    "params.discount_factor == 0.0 and params.refund_regional_factor == 0.0 (locked; estimate_revenue does not itself re-validate this since config.validate_parameters already enforces the [0,1] range, but the formula's simplicity -- no delta/rho terms applied -- assumes exactly the locked values; if a future FORMULATION.md revision unlocks non-zero delta/rho, this function's formula must be revisited, not silently reused)",
+    "0 <= params.storefront_cut <= 1"
+  ],
+  "postconditions": [
+    "F2P rows (is_free True, or price_usd == 0) have NaN in both revenue columns, never 0.0",
+    "For a non-F2P row, estimated_revenue_net_usd == estimated_revenue_gross_usd * (1 - tau) exactly"
+  ],
+  "edge_cases": [
+    {"input": "price_usd == 0 for a title not flagged is_free (e.g. a bundle/soundtrack priced at $0 that is not actually F2P)", "expected_behavior": "treated as F2P for this formula's purposes -- the revenue formula is invalid for any zero-price row regardless of the is_free flag's precise semantics, per FORMULATION.md's phrasing 'F2P titles (P_i undefined as a sale price)'; NaN is used whenever price_usd == 0"},
+    {"input": "price_usd > 0 and sales.estimated_sales_mid == 0 (zero reviews)", "expected_behavior": "gross and net both 0.0, not NaN -- this is a valid zero-revenue estimate, distinct from the F2P 'undefined price basis' case"},
+    {"input": "storefront_cut == 0 (hypothetical, not the locked value)", "expected_behavior": "net == gross exactly"}
+  ],
+  "unit_tests": [
+    {"name": "test_reproduces_hand_computed_gross_and_net", "description": "sales_mid=1000, price_usd=10, tau=0.30 yields gross=10000, net=7000, per the module's own testing requirement.", "inputs": {"sales_mid": 1000, "price_usd": 10.0}, "expected": "gross=10000.0, net=7000.0"},
+    {"name": "test_free_to_play_yields_null_not_zero", "description": "price_usd=0 yields NaN for both revenue columns even though sales_mid > 0.", "inputs": {"price_usd": 0.0, "sales_mid": 5000}, "expected": "gross is NaN, net is NaN"},
+    {"name": "test_zero_reviews_nonfree_yields_zero_not_null", "description": "price_usd=10, sales_mid=0 yields gross=0.0, net=0.0 (not NaN).", "inputs": {"price_usd": 10.0, "sales_mid": 0}, "expected": "gross=0.0, net=0.0"}
+  ],
+  "dependencies": ["estimate_sales"]
+}

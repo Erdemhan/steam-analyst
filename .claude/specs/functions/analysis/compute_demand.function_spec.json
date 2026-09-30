@@ -1,0 +1,27 @@
+{
+  "module": "analysis",
+  "function_name": "compute_demand",
+  "file_path": "src/steam_analyst/analysis/scoring.py",
+  "description": "Per-archetype demand: median estimated sales and median review count over the trailing window, retaining IQR so a single outlier hit is visible.",
+  "signature": "def compute_demand(frame: pd.DataFrame, assignments: pd.DataFrame, params: AnalysisParams) -> pd.DataFrame",
+  "docstring": "Compute per-archetype demand statistics.\n\nArgs:\n    frame: The FULL enriched frame (not just the buildable/simple subset -- demand and competition are computed over all valid-release-date candidates within the trailing window, per FORMULATION.md section 6's D_k/K_k formulas which range over 'releases in the trailing window W', not over the simplicity-filtered subset).\n    assignments: cluster_tags' TagClusterResult.assignments (appid -> cluster_id).\n    params: AnalysisParams.trailing_window_months (W=24), min_cluster_size.\n\nReturns:\n    A DataFrame indexed by cluster_id with columns: n_games (count of releases in the window), median_estimated_sales_mid, median_review_count, sales_iqr_low, sales_iqr_high (25th/75th percentile of estimated_sales_mid within the archetype-window population). Only games with a parseable release_date_parsed within the trailing W months of the run's own execution date are included in these medians (unparseable-date games are excluded here and counted, per the module's own edge case, in a separate rejection tally returned by run_analysis, not by this function).\n",
+  "preconditions": [
+    "frame has release_date_parsed and estimated_sales_mid columns",
+    "params.trailing_window_months > 0"
+  ],
+  "postconditions": [
+    "Every row has n_games >= 1 (an archetype with zero windowed releases simply does not appear as a row at all, rather than appearing with n_games=0 and undefined medians)",
+    "sales_iqr_low <= median_estimated_sales_mid <= sales_iqr_high for every row"
+  ],
+  "edge_cases": [
+    {"input": "An archetype with exactly one windowed release", "expected_behavior": "n_games=1; median equals that single value; sales_iqr_low == sales_iqr_high == that value (a degenerate IQR, still well-defined and reported, not an error) -- whether this archetype later qualifies for OPPORTUNITY SCORING is min_cluster_size's job in build_opportunity_matrix, not this function's; compute_demand reports statistics for every archetype with at least one game, scored or not"},
+    {"input": "A game with an outlier estimated_sales_mid far above its archetype's other members", "expected_behavior": "median is robust to it (barely shifts); sales_iqr_high visibly widens, making the outlier's influence visible rather than hidden, per the module's own testing requirement"},
+    {"input": "A game with an unparseable release_date", "expected_behavior": "excluded from this function's window-based statistics entirely"}
+  ],
+  "unit_tests": [
+    {"name": "test_median_and_iqr_computed_correctly", "description": "A synthetic archetype with known sales values reproduces hand-computed median and IQR.", "inputs": {}, "expected": "matches hand-computed values"},
+    {"name": "test_outlier_visible_in_iqr_not_hidden_by_median", "description": "An archetype with one extreme outlier has a median close to the non-outlier cluster but a visibly widened sales_iqr_high, per the module's own testing requirement.", "inputs": {}, "expected": "median close to typical values; sales_iqr_high >> median"},
+    {"name": "test_unparseable_dates_excluded", "description": "A game with an unparseable release_date does not contribute to its archetype's demand statistics.", "inputs": {}, "expected": "excluded from n_games and medians"}
+  ],
+  "dependencies": ["compute_zscore"]
+}

@@ -1,0 +1,26 @@
+{
+  "module": "storage",
+  "function_name": "write_tags",
+  "file_path": "src/steam_analyst/storage/tags.py",
+  "description": "Writes game_tags rows for a run, replacing any prior rows for that run (idempotent re-run, mirroring write_enriched).",
+  "signature": "def write_tags(conn: sqlite3.Connection, run_id: str, rows: Iterable[TagRow]) -> int",
+  "docstring": "Replace a run's tag rows.\n\nArgs:\n    conn: An open connection.\n    run_id: The run these tags belong to.\n    rows: An iterable of TagRow. May contain multiple rows for the same appid (different tags) but not the same (appid, tag) pair twice.\n\nReturns:\n    The number of rows written.\n\nRaises:\n    StorageError: If run_id does not exist, or the same (appid, tag) pair appears twice in rows.\n",
+  "preconditions": [
+    "run_id already exists in runs"
+  ],
+  "postconditions": [
+    "All prior game_tags rows for run_id are replaced atomically",
+    "Every written row satisfies the (run_id, appid, tag) primary key uniqueness"
+  ],
+  "edge_cases": [
+    {"input": "An empty iterable", "expected_behavior": "writes zero rows, returns 0"},
+    {"input": "The same (appid, tag) pair given twice with different vote counts", "expected_behavior": "StorageError, since this indicates a caller-side deduplication bug in extract_tags, not something storage should silently resolve"},
+    {"input": "A TagRow with votes=None", "expected_behavior": "stored as SQL NULL, accepted"}
+  ],
+  "unit_tests": [
+    {"name": "test_write_then_read_tags", "description": "Written rows are exactly readable back via read_tags.", "inputs": {}, "expected": "read_tags returns the same set of (appid, tag, votes, rank) tuples"},
+    {"name": "test_duplicate_pair_raises", "description": "Two TagRow entries with the same (appid, tag) raise StorageError.", "inputs": {}, "expected": "StorageError"},
+    {"name": "test_empty_iterable_writes_zero", "description": "No rows given writes zero and returns 0.", "inputs": {"rows": []}, "expected": 0}
+  ],
+  "dependencies": []
+}

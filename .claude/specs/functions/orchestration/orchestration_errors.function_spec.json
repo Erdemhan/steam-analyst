@@ -1,0 +1,26 @@
+{
+  "module": "orchestration",
+  "function_name": "orchestration_errors (PipelineError, PipelineCancelled, PreflightError)",
+  "file_path": "src/steam_analyst/orchestration/errors.py",
+  "description": "Bundled type-spec for orchestration's exception hierarchy, grouped in one file like storage_types since none carry independent logic beyond carrying a stage name.",
+  "signature": "class PipelineError(Exception): ...\n\nclass PipelineCancelled(PipelineError):\n    def __init__(self, stage: str) -> None: ...\n    stage: str\n\nclass PreflightError(PipelineError):\n    def __init__(self, message: str, *, cause: Exception | None = None) -> None: ...\n    cause: Exception | None",
+  "docstring": "PipelineError: Base class for this module. Raised directly for invalid resume requests and other orchestration-level misuse (see resume_run's edge cases) -- not raised by a stage entry point itself.\n\nPipelineCancelled: Raised at exactly one of the seven enumerated cancellation check-points (CP1-CP7, see run_pipeline and RateLimiter). Carries which stage it was raised in, since run_pipeline's finally block needs this to call finish_run_stage(stage, 'cancelled') for the right stage. Never raised outside a check-point -- it is not a general-purpose 'something was interrupted' exception.\n\nPreflightError: Raised when config.load_parameters raises ParameterError, or when the ADR-013 parameters.toml/FORMULATION.md consistency check fails. Wraps the original exception as cause so the underlying validation message is never lost, even though PreflightError's own message is what gets truncated into runs.error_message. Raised after storage.create_run has already inserted the run row (so a preflight failure is still visible in the run list) but before any run_stages row exists.\n",
+  "preconditions": [
+    "PipelineCancelled.stage is one of PipelineStage's three values",
+    "PreflightError.cause, when set, is the original exception (typically config.ParameterError) that triggered it"
+  ],
+  "postconditions": [
+    "str(PipelineCancelled(stage)) contains the stage name",
+    "PreflightError.cause, when not None, is accessible for logging the full underlying validation message even though it is not embedded in runs.error_message"
+  ],
+  "edge_cases": [
+    {"input": "PipelineCancelled raised with stage='pipeline' (RUN_LEVEL_STAGE, not a real PipelineStage)", "expected_behavior": "not a valid construction per this module's own contract -- PipelineCancelled is only ever raised from within a stage's execution or from CP1/CP5, both of which know a real PipelineStage value; constructing it with RUN_LEVEL_STAGE would be a caller bug"},
+    {"input": "PreflightError constructed with cause=None (a validation failure with no underlying exception, e.g. a hand-written assertion)", "expected_behavior": "valid; cause is optional for exactly this reason"}
+  ],
+  "unit_tests": [
+    {"name": "test_pipelinecancelled_carries_stage", "description": "PipelineCancelled('enrichment').stage == 'enrichment' and the stage name appears in str().", "inputs": {"stage": "enrichment"}, "expected": "stage attribute and string representation both contain 'enrichment'"},
+    {"name": "test_preflighterror_wraps_cause", "description": "PreflightError('bad weights', cause=ParameterError('...')).cause is the original ParameterError instance.", "inputs": {"message": "bad weights"}, "expected": "cause is not None and isinstance(cause, ParameterError)"},
+    {"name": "test_preflighterror_is_pipelineerror", "description": "PreflightError and PipelineCancelled are both instances of PipelineError.", "inputs": {}, "expected": "isinstance checks pass for both"}
+  ],
+  "dependencies": ["PipelineStage", "config.ParameterError"]
+}

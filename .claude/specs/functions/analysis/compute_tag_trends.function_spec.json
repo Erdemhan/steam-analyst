@@ -1,0 +1,26 @@
+{
+  "module": "analysis",
+  "function_name": "compute_tag_trends",
+  "file_path": "src/steam_analyst/analysis/trends.py",
+  "description": "Per archetype, median estimated sales and release count per sub-window across the trailing window W, plus a descriptive slope. No significance claim is attached without the accompanying sample size.",
+  "signature": "def compute_tag_trends(frame: pd.DataFrame, assignments: pd.DataFrame, params: AnalysisParams) -> pd.DataFrame",
+  "docstring": "Compute per-archetype release-date trends.\n\nArgs:\n    frame: The full enriched frame.\n    assignments: cluster_tags' output.\n    params: AnalysisParams.trailing_window_months (W).\n\nReturns:\n    A DataFrame with columns cluster_id, sub_window_index, sub_window_start, sub_window_end, n_games, median_estimated_sales_mid, plus one summary row per cluster_id with slope (linear regression slope of median_estimated_sales_mid across sub-windows in units of USD-equivalent per sub-window) and slope_n_subwindows (count of sub-windows actually used, i.e. with n_games >= 1). Sub-windows: W divided into fixed-width quarters (6 sub-windows of 4 months each for W=24), a specific partitioning choice this spec makes since FORMULATION.md does not specify sub-window granularity beyond 'sub-windows of W'.\n",
+  "preconditions": [
+    "params.trailing_window_months is evenly divisible by the chosen sub-window width (4 months) for a clean partition; if not, the last sub-window is shorter than the others and this is recorded, not silently dropped"
+  ],
+  "postconditions": [
+    "A cluster_id with fewer than 2 sub-windows containing at least one game has slope == NaN (field left NULL rather than estimated from one point), per the module's own edge case",
+    "Every trend row (per sub-window) carries n_games, so no median is published without its sample size, per the module's own invariant"
+  ],
+  "edge_cases": [
+    {"input": "A cluster with releases in only one sub-window out of six", "expected_behavior": "slope is NaN, slope_n_subwindows == 1, per 'Trailing window containing fewer than two sub-windows -> no slope computed, field left NULL rather than estimated from one point'"},
+    {"input": "A cluster with releases spread across all six sub-windows", "expected_behavior": "slope computed via ordinary least squares over the 6 (sub_window_index, median_estimated_sales_mid) points"},
+    {"input": "A sub-window with zero releases for a given cluster", "expected_behavior": "that sub-window is simply absent from this cluster's rows (not a zero-value row), since n_games=0 would imply a defined-but-zero median, which is not meaningful"}
+  ],
+  "unit_tests": [
+    {"name": "test_slope_null_with_one_subwindow", "description": "A cluster with data in exactly one sub-window has slope == NaN.", "inputs": {}, "expected": "NaN"},
+    {"name": "test_slope_computed_across_multiple_subwindows", "description": "A cluster with a clear upward trend across sub-windows produces a positive slope matching a manual OLS computation.", "inputs": {}, "expected": "positive slope matching hand computation"},
+    {"name": "test_every_row_carries_sample_size", "description": "Every output row has a non-null n_games.", "inputs": {}, "expected": "n_games present on every row"}
+  ],
+  "dependencies": []
+}

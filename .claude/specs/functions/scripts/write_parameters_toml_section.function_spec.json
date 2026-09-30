@@ -1,0 +1,24 @@
+{
+  "module": "scripts",
+  "function_name": "write_parameters_toml_section",
+  "file_path": "scripts/freeze_empirical_parameters.py",
+  "description": "Writes computed FrozenBounds into config/parameters.toml's [enrichment.complexity_bounds] and [analysis] sections, preserving every other existing value in the file byte-for-byte outside the touched keys.",
+  "signature": "def write_parameters_toml_section(path: Path, bounds: FrozenBounds) -> None",
+  "docstring": "Write frozen bounds into parameters.toml.\n\nArgs:\n    path: Path to config/parameters.toml.\n    bounds: compute_frozen_bounds' output.\n\nReturns:\n    None. Performs an in-place, minimally-invasive update: parses the existing TOML, sets/overwrites exactly the complexity_bounds sub-keys and the tag_distance_threshold key, and re-serializes -- using a round-trip-preserving TOML library (e.g. tomlkit, not tomllib+re-dump-from-scratch) so comments and key ordering elsewhere in the file survive.\n\nRaises:\n    ParameterError: If the resulting file would fail config.validate_parameters (defensive re-validation before committing the write, so this script cannot silently produce a parameters.toml that config itself would then reject at the next run's startup).\n",
+  "preconditions": [
+    "path exists and is currently valid TOML (should already be true since this script's whole purpose is to update an existing, working parameters.toml)"
+  ],
+  "postconditions": [
+    "config.load_parameters(path) succeeds and reflects the new bounds after this call",
+    "Every other section/key in the file is byte-identical to before the call except the touched keys"
+  ],
+  "edge_cases": [
+    {"input": "parameters.toml already has a [enrichment.complexity_bounds] section with old values", "expected_behavior": "old values are overwritten, not appended alongside"},
+    {"input": "The resulting file would fail config.validate_parameters (e.g. a computed bound pair is somehow degenerate despite compute_frozen_bounds' own guard)", "expected_behavior": "raises ParameterError and does NOT write the file (write is all-or-nothing, validated in memory before touching disk)"}
+  ],
+  "unit_tests": [
+    {"name": "test_updates_only_targeted_keys", "description": "A fixture parameters.toml with unrelated sections and comments retains them byte-identical after the call, with only the bounds/threshold keys changed.", "inputs": {}, "expected": "diff shows only the targeted keys changed"},
+    {"name": "test_invalid_result_not_written", "description": "A bounds object that would produce an invalid file raises ParameterError and leaves the original file untouched.", "inputs": {}, "expected": "ParameterError; file unchanged on disk"}
+  ],
+  "dependencies": ["config.validate_parameters"]
+}

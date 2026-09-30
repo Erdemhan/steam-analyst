@@ -1,0 +1,22 @@
+{
+  "module": "enrichment",
+  "function_name": "EnrichmentReport",
+  "file_path": "src/steam_analyst/enrichment/pipeline.py",
+  "description": "Summary object returned by run_enrichment.",
+  "signature": "@dataclass(frozen=True)\nclass EnrichmentReport:\n    run_id: str\n    rows_written: int\n    rows_dropped: int\n    dropped_by_reason: dict[str, int]\n    imputation_rate_by_feature: dict[str, float]\n    unmatched_genre_count: int\n    free_to_play_count: int\n    duration_seconds: float",
+  "docstring": "Outcome of one enrichment stage run.\n\nAttributes:\n    rows_written: len(games_enriched rows written).\n    rows_dropped: Candidates present in raw_games but excluded from games_enriched (currently only reason: non-'game' app_type).\n    dropped_by_reason: {'non_game_app_type': N, ...} -- a dict so future drop reasons can be added without a shape change.\n    imputation_rate_by_feature: {'achievement_count': 0.12, ...} -- fraction of written rows where that feature was median-imputed, one entry per complexity feature in FORMULATION.md section 4's table.\n    unmatched_genre_count: Rows whose genre list matched no key in genre_bucket_map and fell back to the default bucket.\n    free_to_play_count: Rows with NaN revenue due to the F2P policy.\n    duration_seconds: Wall-clock stage time.\n",
+  "preconditions": [],
+  "postconditions": [
+    "rows_written + rows_dropped == the number of distinct appids present in the run's raw_games (across steamspy_all rows that also had at least an attempted appdetails fetch, i.e. the candidate set)",
+    "Every key in imputation_rate_by_feature has a value in [0.0, 1.0]"
+  ],
+  "edge_cases": [
+    {"input": "Empty candidate set", "expected_behavior": "rows_written=0, rows_dropped=0, imputation_rate_by_feature has all-zero entries (or is empty -- implementation choice, but must not raise a division-by-zero when rows_written is 0; convention chosen here: 0.0 for every feature when there are no rows to compute a rate over)"},
+    {"input": "A run 1 with complexity_bounds empty (pre-freeze)", "expected_behavior": "imputation_rate_by_feature shows ~1.0 (100%) for every log-scaled feature, which is expected and should be surfaced to the user as a caveat specific to pre-freeze runs, not treated as a data-quality bug"}
+  ],
+  "unit_tests": [
+    {"name": "test_counts_are_internally_consistent", "description": "rows_written + rows_dropped equals the candidate count for a synthetic fixture.", "inputs": {}, "expected": "equality holds"},
+    {"name": "test_empty_run_report_has_zero_counts_no_division_error", "description": "An empty candidate set produces a report with rows_written=0 and no exception from rate computation.", "inputs": {}, "expected": "rows_written == 0, imputation_rate_by_feature well-formed (no NaN/ZeroDivisionError)"}
+  ],
+  "dependencies": []
+}

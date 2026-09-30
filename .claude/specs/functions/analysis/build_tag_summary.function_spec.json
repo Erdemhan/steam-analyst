@@ -1,0 +1,26 @@
+{
+  "module": "analysis",
+  "function_name": "build_tag_summary",
+  "file_path": "src/steam_analyst/analysis/scoring.py",
+  "description": "Single-tag (not cluster-level) view: per tag, game count, median complexity, median estimated sales, median positive review percentage, median price.",
+  "signature": "def build_tag_summary(frame: pd.DataFrame, tags: pd.DataFrame, params: AnalysisParams) -> pd.DataFrame",
+  "docstring": "Compute per-tag summary statistics.\n\nArgs:\n    frame: The full enriched frame.\n    tags: The run's tag rows (appid, tag, votes, rank), unfiltered by cluster membership -- this is deliberately a per-tag, not per-cluster, view, per the module's design note 'Single-tag views are still produced for the tag summary table, but the opportunity matrix is cluster-level'.\n    params: AnalysisParams.min_tag_votes (applied here too, independently of any clustering-stage filtering).\n\nReturns:\n    A DataFrame with one row per distinct tag (post min_tag_votes filtering), columns: tag, n_games, median_complexity_score, median_estimated_sales_mid, median_review_positive_pct, median_price_usd.\n",
+  "preconditions": [
+    "tags and frame share the same run's appid space"
+  ],
+  "postconditions": [
+    "Every row has n_games >= 1 (a tag with zero surviving games after filtering does not appear)",
+    "median_review_positive_pct is in [0, 1] or NaN, never a raw percentage"
+  ],
+  "edge_cases": [
+    {"input": "A tag applied to only one game", "expected_behavior": "n_games=1; every median simply equals that one game's value"},
+    {"input": "A tag whose games are all free-to-play (median_estimated_sales_mid well-defined but revenue-derived medians would be all-NaN)", "expected_behavior": "median_estimated_sales_mid still computed normally (estimated_sales_mid is defined even for F2P games, per FORMULATION.md section 2 -- only revenue is NULL for F2P, not sales); this function does not include a revenue column at all, avoiding the all-NaN issue entirely"},
+    {"input": "min_tag_votes filters out every tag (degenerate config)", "expected_behavior": "returns an empty DataFrame with the documented columns"}
+  ],
+  "unit_tests": [
+    {"name": "test_single_game_tag_medians_equal_that_game", "description": "A tag on exactly one game has every median equal to that game's own values.", "inputs": {}, "expected": "medians match the single game's values"},
+    {"name": "test_review_pct_in_ratio_range", "description": "median_review_positive_pct is always in [0,1] for a fixture with known review percentages.", "inputs": {}, "expected": "value in [0,1]"},
+    {"name": "test_empty_after_min_votes_filter", "description": "A min_tag_votes higher than any tag's vote count returns an empty frame.", "inputs": {}, "expected": "empty DataFrame"}
+  ],
+  "dependencies": []
+}

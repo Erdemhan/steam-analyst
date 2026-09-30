@@ -1,0 +1,27 @@
+{
+  "module": "acquisition",
+  "function_name": "run_acquisition",
+  "file_path": "src/steam_analyst/acquisition/pipeline.py",
+  "description": "Stage entry point called by orchestration. Executes bulk fetch -> persist -> coarse filter -> per-app detail/review fetch -> persist, emitting progress events throughout.",
+  "signature": "def run_acquisition(conn: sqlite3.Connection, run_id: str, config: AcquisitionConfig, settings: Settings, *, on_event: EventSink) -> AcquisitionReport",
+  "docstring": "Run the full acquisition stage for one run.\n\nArgs:\n    conn: An open storage connection (this stage's own thread's connection, per ADR-006).\n    run_id: The run to acquire data for; must already exist (created by storage.create_run before this is called).\n    config: Acquisition tunables including the coarse-filter band.\n    settings: Environment settings (API key, timeouts).\n    on_event: Progress/log sink.\n\nReturns:\n    An AcquisitionReport summarizing the stage.\n\nSteps:\n    1. fetch_steamspy_catalog -> storage.upsert_raw_payloads(source='steamspy_all') in streaming batches, emitting 'stage_start'/'fetch_page' events.\n    2. build_catalog_frame over the persisted (or freshly streamed) bulk rows.\n    3. coarse_filter(catalog, config.coarse_filter) -> FunnelResult.\n    4. storage.write_analysis_result(run_id, 'funnel_report', <FunnelResult serialized>, parameters_version=...) so the funnel is inspectable even if later stages fail.\n    5. fetch_app_details over FunnelResult.candidates['appid'] -> storage.upsert_raw_payloads(source='steam_appdetails').\n    6. fetch_review_summaries over the same appids -> storage.upsert_raw_payloads(source='steam_reviews').\n    7. Emit a final 'stage_complete' event and return the AcquisitionReport.\n\nRaises:\n    AcquisitionError: Propagated from any step that is stage-fatal (see AcquisitionError's own spec). A per-app failure within steps 5/6 is recorded, not raised.\n",
+  "preconditions": [
+    "run_id already exists in runs with status 'pending' or 'running'",
+    "config.coarse_filter.publisher_blocklist and all other CoarseFilterCriteria fields are populated (no code-level defaults)"
+  ],
+  "postconditions": [
+    "raw_games contains rows for source='steamspy_all' covering the whole bulk catalog, and for 'steam_appdetails'/'steam_reviews' covering exactly FunnelResult.candidates' appids",
+    "analysis_results['funnel_report'] exists for run_id after this call, independent of whether enrichment/analysis ever run",
+    "run_events contains at least a 'stage_start' and a 'stage_complete' (or a terminal warning/error) event for stage='acquisition'"
+  ],
+  "edge_cases": [
+    {"input": "Coarse filter produces zero candidates", "expected_behavior": "stage succeeds with candidate_count=0; steps 5 and 6 are skipped (or run over an empty appids list, which per fetch_app_details/fetch_review_summaries yields nothing and emits a warning); the run is NOT marked failed just because the candidate set is empty, per the module's own edge case"},
+    {"input": "The process crashes mid-way through step 5 (e.g. machine loses power)", "expected_behavior": "on restart, raw_games already contains every steamspy_all row and every steam_appdetails row persisted before the crash (batched persistence per invariant); orchestration is responsible for deciding whether to resume or restart the stage -- run_acquisition itself has no resume logic, it always executes all steps 1-6 from scratch when called"},
+    {"input": "RequestBudgetExceeded raised during step 5", "expected_behavior": "propagates out of run_acquisition as an AcquisitionError-family exception; steps 1-4's results (bulk data, funnel report) remain persisted and valid"}
+  ],
+  "unit_tests": [],
+  "dependencies": ["fetch_steamspy_catalog", "build_catalog_frame", "coarse_filter", "fetch_app_details", "fetch_review_summaries", "AcquisitionReport", "AcquisitionError"],
+  "integration_tests": [
+    {"name": "test_run_acquisition_against_stubbed_http_writes_expected_rows", "description": "Against a stubbed HTTP layer and a 20-app synthetic catalog fixture, run_acquisition writes the expected raw_games rows for all three sources, a funnel_report analysis_results row, and a plausible run_events sequence (stage_start ... stage_complete), matching the module spec's own integration test.", "inputs": {}, "expected": "raw_games row counts match the fixture's expected survivors; funnel_report present; no real network call made"}
+  ]
+}

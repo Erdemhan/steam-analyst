@@ -1,0 +1,23 @@
+{
+  "module": "acquisition",
+  "function_name": "SteamSpyClient.fetch_all_page",
+  "file_path": "src/steam_analyst/acquisition/steamspy_client.py",
+  "description": "Wraps one page of SteamSpy's paginated 'all' bulk endpoint.",
+  "signature": "def fetch_all_page(self, page: int) -> tuple[int, dict]",
+  "docstring": "Fetch one page of the SteamSpy bulk catalog.\n\nArgs:\n    page: Zero-based page index, per SteamSpy's request=all&page=N convention.\n\nReturns:\n    (status_code, payload) as returned by HttpClient.get_json. payload, on success, is a dict keyed by appid-as-string, each value containing SteamSpy's per-app summary fields (name, developer, publisher, positive, negative, owners, price, initialprice, discount, tags, ...).\n\nNote:\n    Does not call RateLimiter.acquire() internally in this docstring's described contract -- fetch_steamspy_catalog (the module-level orchestrating function) calls acquire() once per page before invoking this method, per AcquisitionConfig.steamspy_page_delay_seconds.\n",
+  "preconditions": [
+    "page >= 0"
+  ],
+  "postconditions": [
+    "Returns the tuple as-is from HttpClient.get_json; performs no additional parsing or validation of the page contents"
+  ],
+  "edge_cases": [
+    {"input": "page beyond the last real page of the catalog", "expected_behavior": "SteamSpy returns an empty dict {} with status 200; fetch_all_page returns (200, {}) unchanged -- pagination-stop logic lives in fetch_steamspy_catalog, not here"},
+    {"input": "SteamSpy is rate-limiting this client and returns 429", "expected_behavior": "returned as (429, ...) unchanged; caller reacts via RateLimiter.observe_response"}
+  ],
+  "unit_tests": [
+    {"name": "test_fetch_all_page_parses_fixture", "description": "tests/fixtures/steamspy_all_page0.json returned by a stubbed transport is returned unchanged as the payload.", "inputs": {"page": 0}, "expected": "(200, <parsed fixture dict>)"},
+    {"name": "test_fetch_all_page_beyond_last_page", "description": "A stubbed transport returning {} for page=999 returns (200, {}).", "inputs": {"page": 999}, "expected": "(200, {})"}
+  ],
+  "dependencies": ["HttpClient.get_json"]
+}
