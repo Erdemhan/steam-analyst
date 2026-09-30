@@ -637,6 +637,111 @@ def render_past_analyses_page(conn: sqlite3.Connection, settings: Settings) -> N
                             st.session_state[confirm_key] = False
 
 
+def _group_name(label) -> str:
+    """Turn a raw archetype label such as 'Archetype 23' into a Turkish group name."""
+    text = str(label) if label is not None else "bilinmeyen grup"
+    return text.replace("Archetype", "Grup")
+
+
+def _render_simple_summary(report) -> None:
+    """Plain-language summary at the top of the detail page for non-expert readers."""
+    try:
+        funnel = report.funnel
+        st.subheader("Kısaca sonuç")
+        with st.container(border=True):
+            st.write(
+                "Bu analiz, Steam'deki oyunlar arasından **az kişiyle, kısa sürede "
+                "yapılabilecek kadar basit** olup da **iyi satmış görünenleri** ve "
+                "hangi oyun türlerinde (etiket kombinasyonlarında) fırsat olabileceğini "
+                "arar. Aşağıda en önemli bulgular sade bir dille özetlenmiştir."
+            )
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric(
+                    "Taranan oyun",
+                    f"{funnel.catalog_size:,}",
+                    help="Steam kataloğundan çekilen toplam uygulama sayısı.",
+                )
+            with col2:
+                st.metric(
+                    "Değerlendirilen oyun",
+                    f"{funnel.candidate_count:,}",
+                    help="Yeterli yorumu olan, 2020 ve sonrası çıkmış, büyük "
+                    "yayıncılara ait olmayan oyunlar.",
+                )
+            with col3:
+                st.metric(
+                    "Basit sayılan oyun",
+                    f"{funnel.simple_subset_size:,}",
+                    help="Değerlendirilen oyunlar içinde yapımı en az kapsamlı "
+                    "görünen %40'lık dilim.",
+                )
+
+            if funnel.candidate_count == 0 or funnel.simple_subset_size == 0:
+                st.info(
+                    "Bu çalıştırmada yorum yapılacak kadar oyun kalmadı. Daha fazla "
+                    "katalog sayfası ile yeni bir analiz başlatın."
+                )
+                return
+
+            matrix = report.opportunity_matrix
+            if matrix is not None and len(matrix) > 0:
+                ranked = matrix.sort_values("opportunity_score", ascending=False)
+                top = ranked.iloc[0]
+                st.markdown(
+                    f"**Öne çıkan oyun grubu:** {_group_name(top['label'])}. "
+                    f"{int(top['n_games'])} oyundan oluşuyor, son 24 ayda "
+                    f"{int(top['releases_in_window'])} oyun çıkmış, bu oyunların "
+                    f"ortanca tahmini satışı yaklaşık {top['median_estimated_sales_mid']:,.0f} "
+                    "adet. Talep, rekabet ve basitlik birlikte değerlendirildiğinde skoru "
+                    "diğer gruplardan yüksek çıktı."
+                )
+                chart = ranked.head(5).copy()
+                chart["Grup"] = chart["label"].map(_group_name)
+                st.markdown("**En elverişli 5 oyun grubu** (yüksek skor daha elverişli)")
+                st.bar_chart(
+                    chart.set_index("Grup")[["opportunity_score"]].rename(
+                        columns={"opportunity_score": "Fırsat skoru"}
+                    ),
+                    horizontal=True,
+                    sort=False,
+                )
+            else:
+                st.warning(
+                    "Bu çalıştırmada oyun grupları oluşturulamadı, çünkü analiz az "
+                    "sayıda oyunla çalıştı. Bu yüzden hangi grubun daha elverişli "
+                    "olduğu söylenemiyor. Aşağıdaki örnek oyunlar ve etiketler yalnızca "
+                    "fikir verir. Daha güvenilir bir sonuç için daha fazla katalog "
+                    "sayfası taratın."
+                )
+
+            cases = list(report.case_studies or [])
+            if cases:
+                top_cases = cases[:5]
+                names = ", ".join(c.name for c in top_cases)
+                st.markdown(
+                    f"**Az emekle iyi satmış görünen örnekler:** {names}."
+                )
+                if not (matrix is not None and len(matrix) > 0):
+                    frame = pd.DataFrame(
+                        {"Tahmini satış (adet)": [c.estimated_sales_band[1] for c in top_cases]},
+                        index=[c.name for c in top_cases],
+                    )
+                    st.markdown("**Bu örneklerin tahmini satışı** (kaba tahmin)")
+                    st.bar_chart(frame, horizontal=True, sort=False)
+
+            st.markdown(
+                "**Nasıl okunmalı?**\n"
+                "- Satış rakamları Steam yorum sayısından yapılan kaba tahmindir, "
+                "kesin değildir.\n"
+                "- 'Basit' oyun, yapımı küçük kapsamlı görünen demektir, gerçekte az "
+                "emekle yapıldığı kanıtlanmış değildir.\n"
+                "- Bu sonuçlar bir başarı garantisi değil, incelemeye değer yönlerdir."
+            )
+    except Exception as e:
+        st.warning(f"Özet gösterilemedi: {e}")
+
+
 def _case_rationale_tr(case_study) -> str:
     """Build the Turkish rationale sentence for one case study from its fields."""
     pct = case_study.review_positive_pct
@@ -767,6 +872,8 @@ def render_analysis_detail_page(conn: sqlite3.Connection, settings: Settings) ->
         return
 
     st.header(f"Analiz ayrıntısı: {run_id}")
+
+    _render_simple_summary(report)
 
     # Render caveats near the top
     render_caveat_panel(report.caveats)

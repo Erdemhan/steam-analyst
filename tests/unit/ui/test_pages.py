@@ -279,3 +279,46 @@ class TestSessionKeysDiscipline:
 
             for key in st.session_state.keys():
                 assert key in SESSION_KEYS
+
+
+class TestSimpleSummary:
+    """The plain-language summary at the top of the detail page."""
+
+    @staticmethod
+    def _report(matrix):
+        return Mock(
+            funnel=Mock(catalog_size=1000, candidate_count=50, simple_subset_size=20),
+            opportunity_matrix=matrix,
+            case_studies=[],
+        )
+
+    def test_names_top_group_when_matrix_available(self):
+        from steam_analyst.ui.pages import _render_simple_summary
+
+        matrix = pd.DataFrame(
+            {
+                "label": ["Archetype 1", "Archetype 2"],
+                "n_games": [6, 8],
+                "releases_in_window": [5, 7],
+                "median_estimated_sales_mid": [1000.0, 2000.0],
+                "opportunity_score": [0.2, 0.9],
+            }
+        )
+        with patch("steam_analyst.ui.pages.st") as mock_st:
+            mock_st.columns.return_value = [MagicMock(), MagicMock(), MagicMock()]
+            _render_simple_summary(self._report(matrix))
+
+        text = " ".join(str(c.args[0]) for c in mock_st.markdown.call_args_list)
+        assert "Grup 2" in text
+        mock_st.bar_chart.assert_called_once()
+        mock_st.warning.assert_not_called()
+
+    def test_warns_when_no_groups_formed(self):
+        from steam_analyst.ui.pages import _render_simple_summary
+
+        with patch("steam_analyst.ui.pages.st") as mock_st:
+            mock_st.columns.return_value = [MagicMock(), MagicMock(), MagicMock()]
+            _render_simple_summary(self._report(pd.DataFrame()))
+
+        mock_st.warning.assert_called_once()
+        assert "oluşturulamadı" in mock_st.warning.call_args.args[0]
