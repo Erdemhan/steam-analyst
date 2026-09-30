@@ -62,6 +62,92 @@ _COLUMN_TR = {
     "Tag": "Etiket",
     "Positive %": "Olumlu oran",
     "Price ($)": "Fiyat ($)",
+    "cluster_id": "Küme no",
+    "sub_window_index": "Alt pencere no",
+    "sub_window_start": "Alt pencere başı",
+    "sub_window_end": "Alt pencere sonu",
+    "n_games": "Oyun sayısı",
+    "median_estimated_sales_mid": "Tahmini satış (orta)",
+    "slope": "Eğim",
+    "slope_n_subwindows": "Eğimde alt pencere sayısı",
+    "tag": "Etiket",
+    "period": "Dönem",
+    "median_review_positive_pct": "Olumlu oran",
+}
+
+_COLUMN_HELP_TR = {
+    "Küme no": (
+        "Analizin oluşturduğu arketipin (benzer etiketli oyun kümesi) numarası. "
+        "Yalnızca tanımlayıcıdır, sıralama anlamı taşımaz."
+    ),
+    "Arketip": (
+        "Kümeyi temsil eden otomatik ad. Steam türü değildir, kümedeki oyunların "
+        "ortak etiket kombinasyonundan türetilir."
+    ),
+    "Oyun sayısı": (
+        "Bu arketipte (ya da etiketle) analize giren oyun sayısı. Sayı küçükse değerler "
+        "tek bir oyunun etkisiyle değişebilir. Bir arketipin skorlanması için en az "
+        "5 oyun gerekir."
+    ),
+    "Talep (z)": (
+        "Talep göstergesi. Arketipte son 24 ayda çıkan oyunların tahmini satışının "
+        "medyanı, tüm arketipler arasında z-skoruna çevrilir. 0 ortalamadır, +1 "
+        "ortalamanın bir standart sapma üstüdür. Yüksek değer, daha yüksek talep "
+        "anlamına gelir."
+    ),
+    "Rekabet (z)": (
+        "Rekabet göstergesi. Arketipte son 24 ayda çıkan oyun sayısı (katalog "
+        "büyümesine göre düzeltilmiş), tüm arketipler arasında z-skoruna çevrilir. "
+        "Yüksek değer, daha kalabalık bir pazar demektir. Fırsat skorundan "
+        "çıkarılır."
+    ),
+    "Basitlik (z)": (
+        "Basitlik göstergesi. 1 eksi arketipin medyan karmaşıklık skorunun z-skoru. "
+        "Yüksek değer, arketipteki oyunların küçük kapsamlı (yapımı daha kolay) "
+        "olduğunu gösterir."
+    ),
+    "Fırsat skoru": (
+        "0,40 x Talep - 0,30 x Rekabet + 0,30 x Basitlik. Yüksek skor, talebi yüksek, "
+        "rekabeti düşük ve yapımı basit arketip demektir. Skorun birimi ve parasal "
+        "karşılığı yoktur, yalnızca arketipleri birbiriyle sıralamak için kullanılır."
+    ),
+    "Tahmini satış (orta)": (
+        "Oyunların tahmini satış orta değerinin medyanı. Boxleiter yöntemiyle, yorum "
+        "sayısı x tür çarpanı olarak hesaplanır. Kesin satış rakamı değil, kaba bir "
+        "sıralama sinyalidir. Gerçek satışın yaklaşık %43'ü ±%30 içinde tahmin edilir."
+    ),
+    "Karmaşıklık": (
+        "Medyan karmaşıklık skoru, 0 ile 1 arasındadır (0 çok basit, 1 çok karmaşık). "
+        "Kurulum boyutu, erken erişim süresi, geliştiricinin oyun sayısı, başarım ve "
+        "DLC sayısı, etiketler, platform ve dil sayısından hesaplanır. Emeği değil, "
+        "kapsamı yaklaşık olarak gösterir."
+    ),
+    "Penceredeki çıkışlar": (
+        "Arketipte son 24 ayda çıkan oyun sayısı. Rekabet (z) bu sayıdan türetilir."
+    ),
+    "Etiket": "Steam etiketi. Satırdaki değerler bu etikete sahip oyunlar için hesaplanır.",
+    "Olumlu oran": (
+        "Olumlu yorumların toplam yorumlara oranı (0 ile 1 arası) medyanı. Oyuncu "
+        "memnuniyetinin kaba bir göstergesidir."
+    ),
+    "Fiyat ($)": "Bu etikete sahip oyunların medyan mağaza fiyatı (ABD doları).",
+    "Alt pencere no": (
+        "Son 24 aylık pencerenin bölündüğü dilimin sırası. 0 en yeni dilimdir, "
+        "numara büyüdükçe dilim geçmişe gider."
+    ),
+    "Alt pencere başı": "Bu dilimin başlangıç tarihi.",
+    "Alt pencere sonu": "Bu dilimin bitiş tarihi.",
+    "Eğim": (
+        "Bir arketipin dilimler boyunca medyan tahmini satışına uydurulan doğrunun "
+        "eğimi (satış/dilim). Dilim numarası geçmişe doğru arttığı için negatif eğim, "
+        "satışların yeni oyunlara doğru arttığını gösterir. Betimleyicidir, anlamlılık "
+        "iddiası taşımaz ve az dilimde güvenilmezdir."
+    ),
+    "Eğimde alt pencere sayısı": (
+        "Eğimin hesaplandığı, verisi olan dilim sayısı. En az 2 gerekir. Sayı "
+        "azaldıkça eğim güvenilirliğini yitirir."
+    ),
+    "Dönem": "Etiket eğilimi satırlarında kullanılan zaman dilimi.",
 }
 
 # Turkish display text for the fixed caveats, keyed by Caveat.key. Unknown keys
@@ -129,12 +215,23 @@ def _stage_tr(stage: str) -> str:
 
 
 def _render_table(df, empty_message: str, error_prefix: str) -> None:
-    """Render a DataFrame, or an explanatory message when it has no rows."""
+    """Render a DataFrame with Turkish column headers and per-column help tooltips.
+
+    Columns that are empty for every row are dropped, and a message is shown
+    instead of the table when there are no rows at all.
+    """
     try:
         if df is None or len(df) == 0:
             st.info(empty_message)
-        else:
-            st.dataframe(_localize_columns(df))
+            return
+        shown = _localize_columns(df).dropna(axis="columns", how="all")
+        shown = shown.loc[:, ~shown.columns.duplicated()]
+        config = {
+            name: st.column_config.Column(help=_COLUMN_HELP_TR[name])
+            for name in shown.columns
+            if name in _COLUMN_HELP_TR
+        }
+        st.dataframe(shown, column_config=config)
     except Exception as e:
         st.warning(f"{error_prefix}: {e}")
 
