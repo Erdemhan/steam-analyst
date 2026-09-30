@@ -281,6 +281,23 @@ class TestSessionKeysDiscipline:
                 assert key in SESSION_KEYS
 
 
+def _raw_matrix() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "cluster_id": [1, 2],
+            "label": ["Archetype 1", "Archetype 2"],
+            "n_games": [6, 8],
+            "demand_z": [0.1, 0.9],
+            "competition_z": [0.5, -0.5],
+            "simplicity_z": [0.0, 1.0],
+            "opportunity_score": [0.2, 0.9],
+            "median_estimated_sales_mid": [1000.0, 2000.0],
+            "median_complexity": [0.4, 0.3],
+            "releases_in_window": [5, 7],
+        }
+    )
+
+
 class TestSimpleSummary:
     """The plain-language summary at the top of the detail page."""
 
@@ -295,15 +312,7 @@ class TestSimpleSummary:
     def test_names_top_group_when_matrix_available(self):
         from steam_analyst.ui.pages import _render_simple_summary
 
-        matrix = pd.DataFrame(
-            {
-                "label": ["Archetype 1", "Archetype 2"],
-                "n_games": [6, 8],
-                "releases_in_window": [5, 7],
-                "median_estimated_sales_mid": [1000.0, 2000.0],
-                "opportunity_score": [0.2, 0.9],
-            }
-        )
+        matrix = reporting.build_opportunity_matrix_view(_raw_matrix())
         with patch("steam_analyst.ui.pages.st") as mock_st:
             mock_st.columns.return_value = [MagicMock(), MagicMock(), MagicMock()]
             _render_simple_summary(self._report(matrix))
@@ -312,6 +321,17 @@ class TestSimpleSummary:
         assert "Grup 2" in text
         mock_st.bar_chart.assert_called_once()
         mock_st.warning.assert_not_called()
+
+    def test_opportunity_charts_accept_report_view_headers(self):
+        from steam_analyst.ui.pages import _render_opportunity_charts
+
+        matrix = reporting.build_opportunity_matrix_view(_raw_matrix())
+        with patch("steam_analyst.ui.pages.st") as mock_st:
+            _render_opportunity_charts(matrix)
+
+        mock_st.warning.assert_not_called()
+        mock_st.bar_chart.assert_called_once()
+        mock_st.scatter_chart.assert_called_once()
 
     def test_warns_when_no_groups_formed(self):
         from steam_analyst.ui.pages import _render_simple_summary

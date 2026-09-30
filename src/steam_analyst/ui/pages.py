@@ -637,6 +637,15 @@ def render_past_analyses_page(conn: sqlite3.Connection, settings: Settings) -> N
                             st.session_state[confirm_key] = False
 
 
+def _matrix_with_raw_columns(df):
+    """Invert the report view's display headers back to the analysis column names."""
+    inverse = {
+        display: raw
+        for raw, display in reporting.views.OPPORTUNITY_MATRIX_COLUMN_MAPPING.items()
+    }
+    return df.rename(columns=inverse)
+
+
 def _group_name(label) -> str:
     """Turn a raw archetype label such as 'Archetype 23' into a Turkish group name."""
     text = str(label) if label is not None else "bilinmeyen grup"
@@ -709,6 +718,7 @@ def _render_simple_summary(report, bounds_frozen: bool | None = None) -> None:
 
             matrix = report.opportunity_matrix
             if matrix is not None and len(matrix) > 0:
+                matrix = _matrix_with_raw_columns(matrix)
                 ranked = matrix.sort_values("opportunity_score", ascending=False)
                 top = ranked.iloc[0]
                 st.markdown(
@@ -786,7 +796,7 @@ def _render_opportunity_charts(df) -> None:
     try:
         if df is None or len(df) == 0:
             return
-        data = df.copy()
+        data = _matrix_with_raw_columns(df)
         data["label"] = data["label"].fillna(data["cluster_id"].astype(str))
         ranked = data.sort_values("opportunity_score", ascending=False).head(15)
         st.markdown("**Arketiplere göre fırsat skoru** (ilk 15)")

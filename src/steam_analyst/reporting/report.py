@@ -258,20 +258,24 @@ def load_run_report(conn: sqlite3.Connection, run_id: str) -> RunReport:
         tag_summary_view = tag_summary
 
     # Select case studies
+    funnel_report_data = read_analysis_result(
+        conn, run_id=run_id, analysis_type="funnel_report"
+    )
+    if funnel_report_data is None:
+        funnel_report_data = {}
+
     enriched = read_enriched(conn, run_id)
-    if len(enriched) > 0 and len(tag_clusters_df) > 0:
-        selection = select_case_studies(enriched, tag_clusters_df)
+    simple_subset = _simple_subset(
+        enriched, funnel_report_data.get("data", {}).get("simple_subset_size", 0)
+    )
+    if len(simple_subset) > 0 and len(tag_clusters_df) > 0:
+        selection = select_case_studies(simple_subset, tag_clusters_df)
     else:
         selection = CaseStudySelection(case_studies=[], archetype_cap_relaxed=False)
 
     case_studies_list = selection.case_studies
 
     # Build funnel summary
-    funnel_report_data = read_analysis_result(
-        conn, run_id=run_id, analysis_type="funnel_report"
-    )
-    if funnel_report_data is None:
-        funnel_report_data = {}
 
     # funnel_report's "data" sub-object carries catalog_size/candidate_count/
     # detail_fetched/detail_failed (written by acquisition._write_funnel_report)
@@ -332,6 +336,21 @@ def load_run_report(conn: sqlite3.Connection, run_id: str) -> RunReport:
         caveats=caveats,
         is_partial=is_partial,
     )
+
+
+def _simple_subset(enriched: pd.DataFrame, simple_subset_size: int) -> pd.DataFrame:
+    """Rebuild the simplicity filter's subset from the size the analysis stage recorded.
+
+    The filter keeps rows with complexity_score <= the run-local percentile cutoff, so
+    the cutoff equals the k-th smallest non-null score for k = simple_subset_size.
+    """
+    if enriched.empty or not simple_subset_size or simple_subset_size <= 0:
+        return enriched.iloc[0:0]
+    scores = enriched["complexity_score"].dropna().sort_values()
+    if scores.empty:
+        return enriched.iloc[0:0]
+    cutoff = scores.iloc[min(int(simple_subset_size), len(scores)) - 1]
+    return enriched[enriched["complexity_score"] <= cutoff]
 
 
 def headline_metrics(report: RunReport) -> dict[str, Any]:

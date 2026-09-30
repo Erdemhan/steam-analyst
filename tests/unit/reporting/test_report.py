@@ -712,3 +712,34 @@ class TestRunReportIntegration:
         assert "steamspy_owner_confidence" in caveat_keys
         assert "boxleiter_approximation" in caveat_keys
         assert "simplicity_proxy" in caveat_keys
+
+
+class TestSimpleSubset:
+    """_simple_subset reproduces the analysis stage's simplicity filter from its recorded size."""
+
+    @staticmethod
+    def _frame():
+        import pandas as pd
+
+        return pd.DataFrame(
+            {
+                "appid": [1, 2, 3, 4, 5],
+                "complexity_score": [0.5, 0.2, 0.2, None, 0.9],
+            }
+        )
+
+    def test_keeps_rows_at_or_below_the_kth_smallest_score(self):
+        from steam_analyst.reporting.report import _simple_subset
+
+        assert sorted(_simple_subset(self._frame(), 3)["appid"]) == [1, 2, 3]
+
+    def test_ties_at_the_cutoff_are_all_kept(self):
+        from steam_analyst.reporting.report import _simple_subset
+
+        assert sorted(_simple_subset(self._frame(), 1)["appid"]) == [2, 3]
+
+    def test_zero_or_missing_size_gives_empty_subset(self):
+        from steam_analyst.reporting.report import _simple_subset
+
+        assert _simple_subset(self._frame(), 0).empty
+        assert _simple_subset(self._frame(), None).empty
