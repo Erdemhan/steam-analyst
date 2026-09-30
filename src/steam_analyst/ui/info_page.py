@@ -157,38 +157,30 @@ _PARAM_TR = {
 
 _OPEN_ITEMS = [
     (
-        "Kümeleme mesafe eşiği (tag_distance_threshold) henüz dondurulmadı",
-        "Parametre dosyasında tanımsız. Kümeleme şu an varsayılan davranışla çalışıyor. "
-        "Küçük taramalarda kümeler parçalanıyor ve fırsat matrisi boş kalıyor. Gerçek "
-        "bir çalıştırmadan sonra dondurma betiğiyle belirlenmesi planlanıyor.",
-        "FORMULATION.md'ye değer eklenmesi gerekiyor (kullanıcı onayı şart).",
+        "Karmaşıklık sınırları ve kümeleme eşiği küçük bir örneklemden donduruldu",
+        "Normalizasyon sınırları ve kümeleme mesafe eşiği, en çok sahibi olan 1000 "
+        "uygulamanın 2020 sonrası çıkan 203 oyunluk alt kümesinden türetildi. Örneklem "
+        "popüler oyunlara kaydığı için sınırlar tüm adaylara göre yukarı kayık olabilir. "
+        "Bu eşikle 52 kümeden yalnızca 2'si asgari boyutu aşıp skorlanabildi.",
+        "Daha geniş bir çalıştırmadan sonra sınırların yeniden türetilmesi "
+        "FORMULATION.md kararı gerektirir (kullanıcı onayı şart).",
     ),
     (
-        "Karmaşıklık normalizasyon sınırları (complexity_bounds) dondurulmadı",
-        "Log ölçekli 6 özelliğin (kurulum boyutu, erken erişim süresi, geliştiricinin "
-        "oyun sayısı, başarım, DLC ve dil sayısı) normalizasyon sınırları [a, b] tanımsız. "
-        "Sınır yokken bu özellikler hesaplanamıyor ve her oyun için sabit 0,5 değeri "
-        "kullanılıyor. Toplam ağırlığın %75'i böylece herkes için aynı kalıyor, skor "
-        "yalnızca etiketlere ve platform sayısına göre değişiyor (son çalıştırmada "
-        "0,47-0,54). Bu yüzden 'basit oyun' ayrımı güvenilir değil ve Cyberpunk 2077, "
-        "Baldur's Gate 3 gibi büyük yapımlar da basit sayılabiliyor.",
-        "Yeterince büyük bir çalıştırmadan sonra dondurma betiği çalıştırılıp sınırlar "
-        "FORMULATION.md §4'e eklenmeli (kullanıcı onayı şart).",
-    ),
-    (
-        "Kurulum boyutu ve erken erişim süresi her zaman eksik",
-        "Bu iki özellik her oyunda boş geliyor. Resmi appdetails yanıtı kurulum boyutunu "
-        "doğrudan vermiyor, erken erişimde geçirilen gün sayısı ise hiç sağlanmıyor. "
-        "Ağırlığın %35'i (0,20 + 0,15) bu yüzden hiçbir zaman bilgi taşımıyor.",
-        "Kurulum boyutu, appdetails içindeki sistem gereksinimi metninden okunabilir. "
-        "Erken erişim süresi için ise başka bir veri kaynağı ya da ağırlık revizyonu "
+        "Erken erişim süresi hiçbir oyun için alınamıyor",
+        "Erken erişimde geçirilen gün sayısı belgelenmiş API'lerde yok. Erken erişim "
+        "durumu türlerden okunuyor, ancak süre bilinmediği için bu özellik (ağırlık 0,15) "
+        "herkes için sabit 0,5 değerinde kalıyor. Kurulum boyutu ise sistem "
+        "gereksinimi metninden okunuyor ve oyunların yaklaşık %97'sinde bulunuyor.",
+        "Erken erişim süresi için başka bir veri kaynağı ya da ağırlık revizyonu "
         "gerekiyor (FORMULATION.md kararı).",
     ),
     (
         "Büyük (AAA) yapımlar kaba filtreden geçiyor",
         "Kaba filtrenin yorum sayısı üst sınırı yok ve yayıncı kara listesi yalnızca 20 "
         "isim içeriyor (CD Projekt, Larian, Game Science gibi yayıncılar yok). Bu yüzden "
-        "çok büyük bütçeli oyunlar da aday havuzuna giriyor.",
+        "çok büyük bütçeli oyunlar da aday havuzuna giriyor. Sınırlar dondurulduğu için "
+        "bu oyunların karmaşıklık skoru artık yüksek çıkıyor ve basit sayılmıyorlar, "
+        "ancak aday havuzunda yer almaya devam ediyorlar.",
         "Üst sınır ya da daha geniş kara liste eklenmesi FORMULATION.md §0 kararı "
         "gerektiriyor.",
     ),

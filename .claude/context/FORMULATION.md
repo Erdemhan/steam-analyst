@@ -198,6 +198,26 @@ once it exists (run ID, date, and the resulting `a`/`b` per feature).
 Missing values: a feature absent from `appdetails` contributes its weight at the
 cohort median rather than at zero, and the row records which features were imputed.
 
+**Frozen bounds (run 20260930T194128376Z-197441, 2026-09-30).** The bounds are the 5th
+and 95th percentiles of `log10(x + 1)` over the 203 enriched candidates of this run
+(one SteamSpy page, the top 1000 applications by owners, filtered to releases from
+2020-01-01 onward):
+
+| Feature | `a` | `b` |
+|---|---|---|
+| `size_bytes` | 8.660245 | 10.965682 |
+| `dev_title_count` | 0.000000 | 0.602060 |
+| `achievement_count` | 1.134863 | 2.211565 |
+| `dlc_count` | 0.000000 | 1.342423 |
+| `language_count` | 0.301030 | 1.431364 |
+| `early_access_days` | not frozen | not frozen |
+
+`early_access_days` could not be frozen because the documented APIs do not expose the
+early-access duration, so the feature remains at the 0.5 midpoint fallback. The sample
+is restricted to high-owner applications, so the bounds may sit higher than those of
+the full candidate population. `size_bytes` is parsed from the `pc_requirements` text
+(storage line), not from a dedicated API field.
+
 ---
 
 ## 5. Effort-Adjusted Return
@@ -232,6 +252,11 @@ tuned so at least half of clusters clear the minimum-cluster-size rule below) an
 frozen for comparability across later runs. The run that fixes it must be recorded
 here once it exists (run ID, date, resulting threshold, resulting cluster-count and
 median cluster size).
+
+**Frozen threshold (run 20260930T194128376Z-197441, 2026-09-30).** Distance-cut
+threshold = 0.9444444444 (run-local search), giving 52 clusters with a median cluster
+size of 5.0. Only 2 of the 52 clusters cleared the minimum-cluster-size rule within `W`
+in this run, which is consistent with the small 203-game sample.
 
 ```
 D_k = z( median_{i∈k} S_i^mid  over releases in the trailing window W )
@@ -356,8 +381,14 @@ language_count = 0.05
 simplicity_tags = ["Pixel Graphics", "2D", "Casual", "Short", "Singleplayer"]
 complexity_tags = ["Open World", "Multiplayer", "Physics", "Procedural Generation"]
 
-# complexity_bounds: unset until scripts/freeze_empirical_parameters.py runs
-# against run 1 (ADR-012); each feature gets an [a, b] pair once frozen.
+# complexity_bounds: frozen from run 20260930T194128376Z-197441 (ADR-012).
+# early_access_days has no observable values and is intentionally absent.
+[enrichment.complexity_bounds]
+size_bytes = [8.660244515301235, 10.965681882084198]
+dev_title_count = [0.0, 0.6020599913279624]
+achievement_count = [1.1348633964982475, 2.211565253290689]
+dlc_count = [0.0, 1.3424226808222062]
+language_count = [0.3010299956639812, 1.4313637641589874]
 
 # --- enrichment: effort-adjusted return (FORMULATION.md §5) ---
 [enrichment.effort]
@@ -373,7 +404,8 @@ min_votes = 0
 # --- analysis: simplicity threshold (FORMULATION.md §3a) ---
 [analysis]
 simplicity_percentile = 0.40
-# tag_distance_threshold: unset until scripts/freeze_empirical_parameters.py runs (ADR-012)
+# tag_distance_threshold: frozen from run 20260930T194128376Z-197441 (ADR-012)
+tag_distance_threshold = 0.9444444444444445
 clustering_linkage = "average"
 trailing_window_months = 24
 min_cluster_size = 5

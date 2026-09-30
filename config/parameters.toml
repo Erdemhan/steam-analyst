@@ -67,8 +67,15 @@ language_count = 0.05
 simplicity_tags = ["Pixel Graphics", "2D", "Casual", "Short", "Singleplayer"]
 complexity_tags = ["Open World", "Multiplayer", "Physics", "Procedural Generation"]
 
-# complexity_bounds: unset until scripts/freeze_empirical_parameters.py runs
-# against run 1 (ADR-012); each feature gets an [a, b] pair once frozen.
+# complexity_bounds: frozen from run 20260930T194128376Z-197441 (ADR-012).
+# early_access_days has no observable values, so it is intentionally absent
+# and stays at the 0.5 midpoint fallback.
+[enrichment.complexity_bounds]
+size_bytes = [8.660244515301235, 10.965681882084198]
+dev_title_count = [0.0, 0.6020599913279624]
+achievement_count = [1.1348633964982475, 2.211565253290689]
+dlc_count = [0.0, 1.3424226808222062]
+language_count = [0.3010299956639812, 1.4313637641589874]
 
 # --- enrichment: effort-adjusted return (FORMULATION.md §5) ---
 [enrichment.effort]
@@ -82,7 +89,8 @@ min_votes = 0
 # --- analysis: simplicity threshold (FORMULATION.md §3a) ---
 [analysis]
 simplicity_percentile = 0.40
-# tag_distance_threshold: unset until scripts/freeze_empirical_parameters.py runs (ADR-012)
+# tag_distance_threshold: frozen from run 20260930T194128376Z-197441 (ADR-012)
+tag_distance_threshold = 0.9444444444444445
 clustering_linkage = "average"
 trailing_window_months = 24
 min_cluster_size = 5

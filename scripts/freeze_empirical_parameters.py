@@ -366,6 +366,7 @@ def main() -> None:
 
     # Connect to database
     conn = sqlite3.connect(str(db_path))
+    conn.row_factory = sqlite3.Row
     try:
         # Compute frozen bounds
         bounds = compute_frozen_bounds(conn, args.run_id, analysis_params)
