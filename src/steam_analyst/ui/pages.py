@@ -128,6 +128,17 @@ def _stage_tr(stage: str) -> str:
     return _STAGE_TR.get(stage, stage)
 
 
+def _render_table(df, empty_message: str, error_prefix: str) -> None:
+    """Render a DataFrame, or an explanatory message when it has no rows."""
+    try:
+        if df is None or len(df) == 0:
+            st.info(empty_message)
+        else:
+            st.dataframe(_localize_columns(df))
+    except Exception as e:
+        st.warning(f"{error_prefix}: {e}")
+
+
 def _localize_columns(df):
     """Rename known display columns to Turkish; unknown columns are left as-is."""
     try:
@@ -601,24 +612,33 @@ def render_analysis_detail_page(conn: sqlite3.Connection, settings: Settings) ->
 
     # Opportunity matrix
     st.subheader("Fırsat matrisi")
-    try:
-        st.dataframe(_localize_columns(report.opportunity_matrix))
-    except Exception as e:
-        st.warning(f"Fırsat matrisi gösterilemedi: {e}")
+    st.caption(
+        "Her satır bir oyun arketipidir (benzer etiketli oyun kümesi). Fırsat skoru, "
+        "talebi yüksek, rekabeti düşük ve basit arketipleri öne çıkarır."
+    )
+    _render_table(
+        report.opportunity_matrix,
+        "Fırsat matrisi boş. Hiçbir arketip (etiket kümesi) en az 5 oyuna ulaşamadı. "
+        "Bu genellikle analizin az sayıda adayla (küçük katalog taraması) çalıştığını "
+        "gösterir. Daha fazla katalog sayfası ile yeni bir analiz başlatın.",
+        "Fırsat matrisi gösterilemedi",
+    )
 
-    # Tag summary
     st.subheader("Etiket özeti")
-    try:
-        st.dataframe(_localize_columns(report.tag_summary))
-    except Exception as e:
-        st.warning(f"Etiket özeti gösterilemedi: {e}")
+    st.caption("Basit oyun alt kümesindeki her etiket için medyan karmaşıklık, satış ve fiyat.")
+    _render_table(
+        report.tag_summary,
+        "Etiket özeti boş.",
+        "Etiket özeti gösterilemedi",
+    )
 
-    # Tag trends
     st.subheader("Etiket eğilimleri")
-    try:
-        st.dataframe(_localize_columns(report.tag_trends))
-    except Exception as e:
-        st.warning(f"Etiket eğilimleri gösterilemedi: {e}")
+    st.caption("Arketiplerin zaman pencerelerine göre çıkış sayısı değişimi.")
+    _render_table(
+        report.tag_trends,
+        "Etiket eğilimi verisi yok. Eğilim, yalnızca oluşan arketipler için hesaplanır.",
+        "Etiket eğilimleri gösterilemedi",
+    )
 
     # Case studies
     st.subheader("Vaka çalışmaları")
@@ -636,9 +656,13 @@ def render_analysis_detail_page(conn: sqlite3.Connection, settings: Settings) ->
                     f"**Çıkış:** {case_study.release_date} | "
                     f"**Fiyat:** ${case_study.price_usd:.2f}"
                 )
+                pct = case_study.review_positive_pct
+                positive_text = (
+                    "olumlu oran bilinmiyor" if pct != pct else f"%{pct * 100:.0f} olumlu"
+                )
                 st.write(
                     f"**Yorumlar:** {case_study.review_count:,} "
-                    f"(%{case_study.review_positive_pct * 100:.0f} olumlu)"
+                    f"({positive_text})"
                 )
                 low, mid, high = case_study.estimated_sales_band
                 revenue = case_study.estimated_revenue_net_usd

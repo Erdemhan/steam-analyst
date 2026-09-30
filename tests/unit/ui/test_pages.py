@@ -235,6 +235,9 @@ class TestCaseStudyRendering:
         report.caveats = []
         report.funnel = Mock(candidate_count=5, simple_subset_size=3, catalog_size=100)
         report.case_studies = [case_study]
+        report.opportunity_matrix = pd.DataFrame()
+        report.tag_summary = pd.DataFrame()
+        report.tag_trends = pd.DataFrame()
         st.query_params["run_id"] = "test-run-id"
 
         with patch("steam_analyst.ui.pages.reporting") as mock_reporting_module, patch(
@@ -245,7 +248,7 @@ class TestCaseStudyRendering:
             "streamlit.columns", return_value=[MagicMock(), MagicMock(), MagicMock()]
         ), patch("streamlit.expander") as mock_expander, patch(
             "streamlit.write"
-        ) as mock_write, patch("streamlit.markdown"):
+        ) as mock_write, patch("streamlit.markdown"), patch("streamlit.caption"), patch("streamlit.info"):
             mock_reporting_module.load_run_report.return_value = report
             render_analysis_detail_page(Mock(spec=sqlite3.Connection), Mock())
 
