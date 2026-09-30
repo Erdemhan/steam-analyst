@@ -322,3 +322,33 @@ class TestSimpleSummary:
 
         mock_st.warning.assert_called_once()
         assert "oluşturulamadı" in mock_st.warning.call_args.args[0]
+
+    def test_shows_error_when_complexity_bounds_unfrozen(self):
+        from steam_analyst.ui.pages import _render_simple_summary
+
+        with patch("steam_analyst.ui.pages.st") as mock_st:
+            mock_st.columns.return_value = [MagicMock(), MagicMock(), MagicMock()]
+            _render_simple_summary(self._report(pd.DataFrame()), bounds_frozen=False)
+
+        mock_st.error.assert_called_once()
+        assert "güvenilir değil" in mock_st.error.call_args.args[0]
+
+    def test_no_error_when_bounds_frozen_or_unknown(self):
+        from steam_analyst.ui.pages import _render_simple_summary
+
+        for state in (True, None):
+            with patch("steam_analyst.ui.pages.st") as mock_st:
+                mock_st.columns.return_value = [MagicMock(), MagicMock(), MagicMock()]
+                _render_simple_summary(self._report(pd.DataFrame()), bounds_frozen=state)
+            mock_st.error.assert_not_called()
+
+    def test_bounds_frozen_helper_reads_parameters(self, tmp_path):
+        from steam_analyst.ui.pages import _complexity_bounds_frozen
+
+        empty = tmp_path / "a.toml"
+        empty.write_text("[enrichment]\n", encoding="utf-8")
+        frozen = tmp_path / "b.toml"
+        frozen.write_text("[enrichment.complexity_bounds]\nsize_bytes = [1.0, 2.0]\n", encoding="utf-8")
+        assert _complexity_bounds_frozen(Mock(parameters_path=empty)) is False
+        assert _complexity_bounds_frozen(Mock(parameters_path=frozen)) is True
+        assert _complexity_bounds_frozen(Mock()) is None

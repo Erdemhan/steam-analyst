@@ -165,15 +165,32 @@ _OPEN_ITEMS = [
     ),
     (
         "Karmaşıklık normalizasyon sınırları (complexity_bounds) dondurulmadı",
-        "Her özellik için [a, b] sınırları tanımsız. Bu yüzden skorlar dar bir aralıkta "
-        "toplanıyor (son çalıştırmada 0,47-0,54) ve oyunlar birbirinden zor ayrışıyor.",
-        "FORMULATION.md §4'e dondurulmuş sınırlar eklenmeli.",
+        "Log ölçekli 6 özelliğin (kurulum boyutu, erken erişim süresi, geliştiricinin "
+        "oyun sayısı, başarım, DLC ve dil sayısı) normalizasyon sınırları [a, b] tanımsız. "
+        "Sınır yokken bu özellikler hesaplanamıyor ve her oyun için sabit 0,5 değeri "
+        "kullanılıyor. Toplam ağırlığın %75'i böylece herkes için aynı kalıyor, skor "
+        "yalnızca etiketlere ve platform sayısına göre değişiyor (son çalıştırmada "
+        "0,47-0,54). Bu yüzden 'basit oyun' ayrımı güvenilir değil ve Cyberpunk 2077, "
+        "Baldur's Gate 3 gibi büyük yapımlar da basit sayılabiliyor.",
+        "Yeterince büyük bir çalıştırmadan sonra dondurma betiği çalıştırılıp sınırlar "
+        "FORMULATION.md §4'e eklenmeli (kullanıcı onayı şart).",
     ),
     (
         "Kurulum boyutu ve erken erişim süresi her zaman eksik",
-        "Bu iki özellik her oyunda eksik olduğu için ortalama değerle dolduruluyor. "
-        "Karmaşıklık ağırlığının %35'i (0,20 + 0,15) fiilen bilgi taşımıyor.",
-        "Veri kaynağı yeniden değerlendirilmeli ya da ağırlıklar revize edilmeli.",
+        "Bu iki özellik her oyunda boş geliyor. Resmi appdetails yanıtı kurulum boyutunu "
+        "doğrudan vermiyor, erken erişimde geçirilen gün sayısı ise hiç sağlanmıyor. "
+        "Ağırlığın %35'i (0,20 + 0,15) bu yüzden hiçbir zaman bilgi taşımıyor.",
+        "Kurulum boyutu, appdetails içindeki sistem gereksinimi metninden okunabilir. "
+        "Erken erişim süresi için ise başka bir veri kaynağı ya da ağırlık revizyonu "
+        "gerekiyor (FORMULATION.md kararı).",
+    ),
+    (
+        "Büyük (AAA) yapımlar kaba filtreden geçiyor",
+        "Kaba filtrenin yorum sayısı üst sınırı yok ve yayıncı kara listesi yalnızca 20 "
+        "isim içeriyor (CD Projekt, Larian, Game Science gibi yayıncılar yok). Bu yüzden "
+        "çok büyük bütçeli oyunlar da aday havuzuna giriyor.",
+        "Üst sınır ya da daha geniş kara liste eklenmesi FORMULATION.md §0 kararı "
+        "gerektiriyor.",
     ),
     (
         "Ücretsiz oyunların gelir tahmini",

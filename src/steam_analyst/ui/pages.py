@@ -643,7 +643,18 @@ def _group_name(label) -> str:
     return text.replace("Archetype", "Grup")
 
 
-def _render_simple_summary(report) -> None:
+def _complexity_bounds_frozen(settings) -> bool | None:
+    """Return whether complexity_bounds is set in the parameters file (None if unreadable)."""
+    try:
+        from .info_page import _load_parameters
+
+        bounds = _load_parameters(settings).get("enrichment", {}).get("complexity_bounds")
+        return bool(bounds)
+    except Exception:
+        return None
+
+
+def _render_simple_summary(report, bounds_frozen: bool | None = None) -> None:
     """Plain-language summary at the top of the detail page for non-expert readers."""
     try:
         funnel = report.funnel
@@ -675,6 +686,18 @@ def _render_simple_summary(report) -> None:
                     f"{funnel.simple_subset_size:,}",
                     help="Değerlendirilen oyunlar içinde yapımı en az kapsamlı "
                     "görünen %40'lık dilim.",
+                )
+
+            if bounds_frozen is False:
+                st.error(
+                    "**Önemli uyarı: 'basit oyun' ayrımı şu an güvenilir değil.** "
+                    "Karmaşıklık skorunun normalizasyon sınırları henüz belirlenmediği "
+                    "için başarım, DLC, dil ve geliştirici oyun sayısı skora hiç "
+                    "yansımıyor, skor yalnızca etiketlere ve platform sayısına göre "
+                    "değişiyor. Bu yüzden Cyberpunk 2077 ya da Baldur's Gate 3 gibi büyük "
+                    "yapımlar da 'basit' sayılabiliyor. Aşağıdaki sonuçlar "
+                    "'basit oyunlar' için değil, genel olarak başarılı oyunlar için "
+                    "bir fikir verir. Ayrıntı için Bilgi sayfasına bakın."
                 )
 
             if funnel.candidate_count == 0 or funnel.simple_subset_size == 0:
@@ -873,7 +896,7 @@ def render_analysis_detail_page(conn: sqlite3.Connection, settings: Settings) ->
 
     st.header(f"Analiz ayrıntısı: {run_id}")
 
-    _render_simple_summary(report)
+    _render_simple_summary(report, _complexity_bounds_frozen(settings))
 
     # Render caveats near the top
     render_caveat_panel(report.caveats)
