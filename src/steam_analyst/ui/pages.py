@@ -19,6 +19,7 @@ import sqlite3
 from pathlib import Path
 from typing import Sequence
 
+import pandas as pd
 import streamlit as st
 
 from steam_analyst.config import Settings
@@ -636,6 +637,102 @@ def render_past_analyses_page(conn: sqlite3.Connection, settings: Settings) -> N
                             st.session_state[confirm_key] = False
 
 
+def _case_rationale_tr(case_study) -> str:
+    """Build the Turkish rationale sentence for one case study from its fields."""
+    pct = case_study.review_positive_pct
+    positive = "olumlu oranı bilinmiyor" if pct != pct else f"%{pct * 100:.0f} olumlu"
+    price = case_study.price_usd
+    price_text = "fiyatı bilinmiyor" if price != price else f"${price:.2f}"
+    archetype = case_study.archetype_label or "bilinmeyen arketip"
+    return (
+        f"{case_study.review_count:,} yorum ({positive}) ve {price_text} fiyatla "
+        f"{archetype} içinde yer alıyor. Karmaşıklık skoru "
+        f"{case_study.complexity_score:.2f} (0 en basit, 1 en karmaşık). Tahmini net "
+        "gelirin karmaşıklığa oranı (etkin getiri) seçim sıralamasında üst sıralarda "
+        "olduğu için vaka çalışması olarak seçildi."
+    )
+
+
+def _render_opportunity_charts(df) -> None:
+    """Bar chart of opportunity score and demand/competition scatter per archetype."""
+    try:
+        if df is None or len(df) == 0:
+            return
+        data = df.copy()
+        data["label"] = data["label"].fillna(data["cluster_id"].astype(str))
+        ranked = data.sort_values("opportunity_score", ascending=False).head(15)
+        st.markdown("**Arketiplere göre fırsat skoru** (ilk 15)")
+        st.bar_chart(
+            ranked.set_index("label")[["opportunity_score"]].rename(
+                columns={"opportunity_score": "Fırsat skoru"}
+            ),
+            horizontal=True,
+            sort=False,
+        )
+        st.markdown("**Talep ve rekabet** (her nokta bir arketip; sol üst en elverişli bölge)")
+        scatter = data.rename(
+            columns={"demand_z": "Talep (z)", "competition_z": "Rekabet (z)"}
+        )
+        st.scatter_chart(scatter, x="Rekabet (z)", y="Talep (z)", size="n_games")
+    except Exception as e:
+        st.warning(f"Fırsat grafikleri gösterilemedi: {e}")
+
+
+def _render_tag_summary_chart(df) -> None:
+    """Bar chart of the most frequent tags in the simple subset."""
+    try:
+        if df is None or len(df) == 0 or "N" not in df.columns:
+            return
+        top = df.sort_values("N", ascending=False).head(15)
+        st.markdown("**En sık görülen etiketler** (basit oyun alt kümesindeki oyun sayısı)")
+        st.bar_chart(
+            top.set_index("Tag")[["N"]].rename(columns={"N": "Oyun sayısı"}),
+            horizontal=True,
+            sort=False,
+        )
+    except Exception as e:
+        st.warning(f"Etiket grafiği gösterilemedi: {e}")
+
+
+def _render_trend_chart(df) -> None:
+    """Line chart of median estimated sales per sub-window, one line per archetype."""
+    try:
+        if df is None or len(df) == 0:
+            return
+        data = df.dropna(subset=["sub_window_end", "median_estimated_sales_mid"]).copy()
+        if data.empty:
+            return
+        data["Arketip"] = "Küme " + data["cluster_id"].astype(int).astype(str)
+        wide = data.pivot_table(
+            index="sub_window_end",
+            columns="Arketip",
+            values="median_estimated_sales_mid",
+            aggfunc="median",
+        ).sort_index()
+        st.markdown(
+            "**Alt pencerelere göre medyan tahmini satış** (yatay eksen: dilimin bitiş "
+            "tarihi; boşluklar oyun çıkmayan dilimlerdir)"
+        )
+        st.line_chart(wide)
+    except Exception as e:
+        st.warning(f"Eğilim grafiği gösterilemedi: {e}")
+
+
+def _render_case_study_chart(case_studies) -> None:
+    """Bar chart of the estimated mid sales of the selected case studies."""
+    try:
+        frame = pd.DataFrame(
+            {
+                "Oyun": [c.name for c in case_studies],
+                "Tahmini satış (orta)": [c.estimated_sales_band[1] for c in case_studies],
+            }
+        ).set_index("Oyun")
+        st.markdown("**Vaka çalışmalarının tahmini satışı** (orta değer, kaba sinyal)")
+        st.bar_chart(frame, horizontal=True, sort=False)
+    except Exception as e:
+        st.warning(f"Vaka grafiği gösterilemedi: {e}")
+
+
 def render_analysis_detail_page(conn: sqlite3.Connection, settings: Settings) -> None:
     """Render one run's results.
 
@@ -710,8 +807,11 @@ def render_analysis_detail_page(conn: sqlite3.Connection, settings: Settings) ->
     # Opportunity matrix
     st.subheader("Fırsat matrisi")
     st.caption(
-        "Her satır bir oyun arketipidir (benzer etiketli oyun kümesi). Fırsat skoru, "
-        "talebi yüksek, rekabeti düşük ve basit arketipleri öne çıkarır."
+        "Her satır bir arketiptir (etiket kombinasyonları birbirine benzeyen oyunların "
+        "kümesi). Fırsat skoru = 0,40 x talep - 0,30 x rekabet + 0,30 x basitlik. "
+        "Üç bileşen de arketipler arasında z-skoruna çevrilmiştir (0 = ortalama). "
+        "Skor parasal bir değer değil, arketipleri birbiriyle sıralamak için "
+        "kullanılan göreli bir ölçüdür. Ayrıntı için Bilgi sayfasına bakın."
     )
     _render_table(
         report.opportunity_matrix,
@@ -720,32 +820,72 @@ def render_analysis_detail_page(conn: sqlite3.Connection, settings: Settings) ->
         "gösterir. Daha fazla katalog sayfası ile yeni bir analiz başlatın.",
         "Fırsat matrisi gösterilemedi",
     )
+    _render_opportunity_charts(report.opportunity_matrix)
 
     st.subheader("Etiket özeti")
-    st.caption("Basit oyun alt kümesindeki her etiket için medyan karmaşıklık, satış ve fiyat.")
+    st.caption(
+        "Basit oyun alt kümesinde her Steam etiketi için o etikete sahip oyunların "
+        "medyan karmaşıklığı, medyan tahmini satışı (Boxleiter orta değeri), medyan "
+        "olumlu yorum oranı ve medyan fiyatı. Bir oyun birden fazla etiket taşıdığı için "
+        "aynı oyun birden çok satırda sayılır. Oyun sayısı (N) küçükse medyanlar "
+        "tek bir oyundan etkilenir."
+    )
     _render_table(
         report.tag_summary,
         "Etiket özeti boş.",
         "Etiket özeti gösterilemedi",
     )
+    _render_tag_summary_chart(report.tag_summary)
 
     st.subheader("Etiket eğilimleri")
-    st.caption("Arketiplerin zaman pencerelerine göre çıkış sayısı değişimi.")
+    st.caption(
+        "Her arketip için son 24 aylık pencere 4'er aylık 6 dilime bölünür ve her "
+        "dilimde o arketipte çıkan oyunların medyan tahmini satışı hesaplanır. "
+        "Burada çıkış sayısı değil, çıkan oyunların medyan satışı gösterilir. "
+        "Dilim numarası 0 en yeni dilimdir ve numara büyüdükçe geçmişe gidilir. "
+        "Eğim, dilim numarasına karşı medyan satışa uydurulan doğrusal (OLS) regresyon "
+        "doğrusunun eğimidir. Numara geçmişe doğru arttığı için negatif eğim, yeni "
+        "çıkan oyunların eskilere göre daha yüksek satış yaptığını, pozitif eğim ise "
+        "tersini gösterir. Bir dilimde hiç oyun çıkmadıysa o dilim hesaba katılmaz ve "
+        "eğim için en az 2 dilim gerekir. Bu değer betimleyicidir, istatistiksel "
+        "anlamlılık testi içermez ve az dilim ya da az oyunla güvenilir değildir."
+    )
     _render_table(
         report.tag_trends,
         "Etiket eğilimi verisi yok. Eğilim, yalnızca oluşan arketipler için hesaplanır.",
         "Etiket eğilimleri gösterilemedi",
     )
+    _render_trend_chart(report.tag_trends)
 
     # Case studies
     st.subheader("Vaka çalışmaları")
+    st.markdown(
+        "**Vaka çalışması nedir?** Fırsat matrisi arketipleri özetler. Vaka çalışmaları "
+        "ise bu arketiplerin içinde, *az emekle ticari olarak başarılı olduğu "
+        "görünen* somut oyun örnekleridir. Amaç, bir arketipin gerçekte nasıl "
+        "göründüğünü tek tek oyunlar üzerinden incelemektir.\n\n"
+        "**Nasıl seçilir?**\n"
+        "1. Yalnızca gelir tahmini ve karmaşıklık skoru hesaplanabilen oyunlar "
+        "değerlendirilir (ücretsiz oyunlar ve karmaşıklığı bilinmeyenler dışarıda kalır) "
+        "ve oyunun bir arketip kümesine atanmış olması gerekir.\n"
+        "2. Oyunlar *etkin getiri* değerine göre büyükten küçüğe sıralanır. Etkin getiri, "
+        "tahmini net gelirin karmaşıklık skoruna (+0,05) bölünmesidir. Yani kabaca "
+        "'kapsam başına kazanç'tır.\n"
+        "3. Çeşitlilik için sıradan en fazla 15 oyun alınır. Bir arketipten en fazla "
+        "2, bir geliştiriciden en fazla 1 oyun seçilir. 15'e ulaşılamazsa arketip "
+        "sınırı bir kez 3'e gevşetilir (geliştirici sınırı hiç gevşetilmez).\n\n"
+        "**Dikkat:** Gelir, yorum sayısından Boxleiter yöntemiyle çıkarılan kaba bir "
+        "tahmindir. Karmaşıklık skoru da emeği değil kapsamı yaklaşık olarak gösterir. "
+        "Bu oyunların gerçekten az emekle yapıldığı kanıtlanmış bir sonuç olarak "
+        "okunmamalıdır. Yalnızca 'incelemeye değer adaylar' olarak değerlendirin."
+    )
     if not report.case_studies:
         st.info("Gösterilecek vaka çalışması yok.")
     else:
+        _render_case_study_chart(report.case_studies)
         for case_study in report.case_studies:
             with st.expander(f"{case_study.name} (appid={case_study.appid})"):
-                if case_study.rationale:
-                    st.write(f"**Gerekçe:** {case_study.rationale}")
+                st.write(f"**Gerekçe:** {_case_rationale_tr(case_study)}")
                 if case_study.archetype_label:
                     st.write(f"**Arketip:** {case_study.archetype_label}")
                 st.write(
@@ -788,3 +928,18 @@ def render_analysis_detail_page(conn: sqlite3.Connection, settings: Settings) ->
         st.metric("Adaylar", report.funnel.candidate_count)
     with col3:
         st.metric("Basit oyunlar", report.funnel.simple_subset_size)
+    st.caption(
+        "Katalog: taranan Steam uygulamaları. Adaylar: kaba filtreyi geçenler. "
+        "Basit oyunlar: adaylar içinde karmaşıklık skoru en düşük %40'lık dilime girenler."
+    )
+    funnel_df = pd.DataFrame(
+        {
+            "Oyun sayısı": [
+                report.funnel.catalog_size,
+                report.funnel.candidate_count,
+                report.funnel.simple_subset_size,
+            ]
+        },
+        index=["Katalog", "Adaylar", "Basit oyunlar"],
+    )
+    st.bar_chart(funnel_df, horizontal=True, sort=False)

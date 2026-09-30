@@ -3,7 +3,7 @@
 This module implements the Streamlit app's lifecycle management and navigation:
 - main() handles startup (config, schema, migrations, reconciliation) and
   dispatcher (navigation dispatch to pages).
-- build_navigation() constructs the st.navigation with the three pages.
+- build_navigation() constructs the st.navigation with the four pages.
 
 Each page function (render_*_page) takes a connection and settings as arguments.
 Since st.Page expects zero-argument callables, build_navigation() creates adapter
@@ -30,6 +30,7 @@ from .pages import (
     render_analysis_detail_page,
     register_nav_pages,
 )
+from .info_page import render_info_page
 
 
 def main() -> None:
@@ -76,7 +77,7 @@ def main() -> None:
 
 
 def build_navigation(settings: Settings) -> st.navigation:
-    """Build the navigation structure over three pages.
+    """Build the navigation structure over four pages.
 
     Returns:
         st.navigation: A navigation object with three st.Page entries, each
@@ -111,7 +112,7 @@ def build_navigation(settings: Settings) -> st.navigation:
 
         return _wrapped
 
-    # Build the three pages
+    # Build the four pages
     new_page = st.Page(
         _page_adapter(render_new_analysis_page),
         title="Yeni analiz",
@@ -128,6 +129,13 @@ def build_navigation(settings: Settings) -> st.navigation:
         title="Analiz ayrıntısı",
         url_path="detail",
     )
-    register_nav_pages({"new": new_page, "past": past_page, "detail": detail_page})
+    info_page = st.Page(
+        _page_adapter(render_info_page),
+        title="Bilgi",
+        url_path="info",
+    )
+    register_nav_pages(
+        {"new": new_page, "past": past_page, "detail": detail_page, "info": info_page}
+    )
 
-    return st.navigation([new_page, past_page, detail_page])
+    return st.navigation([new_page, past_page, detail_page, info_page])

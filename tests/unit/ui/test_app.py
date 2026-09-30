@@ -1,7 +1,7 @@
 """Unit tests for the ui.app module.
 
 Tests cover:
-- build_navigation returns exactly the three expected pages with the expected default.
+- build_navigation returns exactly the four expected pages with the expected default.
 - main's startup sequence (reconcile_orphaned_runs before build_navigation).
 - Connection lifecycle (main's connection closed before page dispatch).
 """
@@ -38,21 +38,21 @@ class TestBuildNavigation:
             # Verify st.navigation was called
             mock_nav.assert_called()
 
-    def test_build_navigation_creates_three_pages(self, mock_settings: Mock) -> None:
-        """build_navigation passes exactly three st.Page objects to st.navigation."""
+    def test_build_navigation_creates_four_pages(self, mock_settings: Mock) -> None:
+        """build_navigation passes exactly four st.Page objects to st.navigation."""
         with patch("steam_analyst.ui.app.storage"), patch(
             "steam_analyst.ui.app.st.Page"
         ) as mock_page_class, patch(
             "steam_analyst.ui.app.st.navigation", return_value=Mock(spec=st.navigation)
         ) as mock_nav:
             build_navigation(mock_settings)
-            # st.Page should be called exactly 3 times
-            assert mock_page_class.call_count == 3
+            # st.Page should be called exactly 4 times
+            assert mock_page_class.call_count == 4
 
     def test_build_navigation_pages_have_correct_titles(
         self, mock_settings: Mock
     ) -> None:
-        """The three pages have the expected titles."""
+        """The four pages have the expected titles."""
         with patch("steam_analyst.ui.app.storage"), patch(
             "steam_analyst.ui.app.st.Page"
         ) as mock_page_class, patch(
@@ -67,11 +67,12 @@ class TestBuildNavigation:
             assert "Yeni analiz" in titles
             assert "Geçmiş analizler" in titles
             assert "Analiz ayrıntısı" in titles
+            assert "Bilgi" in titles
 
     def test_build_navigation_pages_have_correct_url_paths(
         self, mock_settings: Mock
     ) -> None:
-        """The three pages have the expected url_paths."""
+        """The four pages have the expected url_paths."""
         with patch("steam_analyst.ui.app.storage"), patch(
             "steam_analyst.ui.app.st.Page"
         ) as mock_page_class, patch(
@@ -85,6 +86,7 @@ class TestBuildNavigation:
             assert "new" in url_paths
             assert "runs" in url_paths
             assert "detail" in url_paths
+            assert "info" in url_paths
 
     def test_build_navigation_first_page_is_default(self, mock_settings: Mock) -> None:
         """The first page (Run New Analysis) is marked as default."""
