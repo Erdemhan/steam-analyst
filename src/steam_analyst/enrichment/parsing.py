@@ -6,6 +6,7 @@ entries.
 """
 
 import json
+import re
 import sqlite3
 from dataclasses import dataclass
 from typing import Any
@@ -15,6 +16,72 @@ import pandas as pd
 from steam_analyst.storage import get_run, read_raw_payloads
 from steam_analyst.storage.types import TagRow
 from .errors import EnrichmentError
+
+
+_STORAGE_LABEL_RE = re.compile(
+    r"(?:storage|hard\s*(?:disk|drive)|disk\s*space|free\s*disk|available\s*space|"
+    r"hdd|harddisk|install(?:ation)?\s*size)",
+    re.IGNORECASE,
+)
+_SIZE_VALUE_RE = re.compile(r"(\d+(?:[.,]\d+)?)\s*(tb|gb|mb|kb|gib|mib)\b", re.IGNORECASE)
+_SIZE_UNIT_BYTES = {
+    "kb": 1e3,
+    "mb": 1e6,
+    "gb": 1e9,
+    "tb": 1e12,
+    "mib": 1024.0**2,
+    "gib": 1024.0**3,
+}
+_HTML_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def parse_install_size_bytes(pc_requirements: Any) -> int | None:
+    """Extract the required install size in bytes from a Steam pc_requirements value.
+
+    Steam appdetails has no install-size field, so the storage line of the
+    minimum (falling back to recommended) system requirements is parsed, e.g.
+    "<li><strong>Storage:</strong> 50 GB available space<br></li>".
+
+    Args:
+        pc_requirements: The appdetails 'pc_requirements' value (a dict with
+            'minimum'/'recommended' HTML strings, or an empty list when absent).
+
+    Returns:
+        Size in bytes (decimal units: 1 GB = 1e9), or None when no storage line
+        with a parseable size exists.
+    """
+    if not isinstance(pc_requirements, dict):
+        return None
+    for key in ("minimum", "recommended"):
+        html = pc_requirements.get(key)
+        if not isinstance(html, str) or not html:
+            continue
+        for item in re.split(r"<br\s*/?>|</li>|\n", html, flags=re.IGNORECASE):
+            text = _HTML_TAG_RE.sub(" ", item)
+            label = _STORAGE_LABEL_RE.search(text)
+            if not label:
+                continue
+            value = _SIZE_VALUE_RE.search(text[label.end():])
+            if not value:
+                continue
+            amount = float(value.group(1).replace(",", "."))
+            size = int(amount * _SIZE_UNIT_BYTES[value.group(2).lower()])
+            if size > 0:
+                return size
+    return None
+
+
+def parse_is_early_access(genres: Any) -> bool:
+    """Return True when appdetails genres contain Steam's 'Early Access' genre (id 70)."""
+    if not isinstance(genres, list):
+        return False
+    for genre in genres:
+        if isinstance(genre, dict) and (
+            str(genre.get("id")) == "70"
+            or str(genre.get("description", "")).strip().lower() == "early access"
+        ):
+            return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -216,16 +283,8 @@ def normalize_features(bundle: RawBundle) -> pd.DataFrame:
         # Size and achievement counts from appdetails
         size_bytes = None
         if appdetails_success:
-            size = appdetails_data.get("size_bytes")
-            if size is not None:
-                try:
-                    size_bytes = int(size)
-                    if size_bytes < 0:
-                        size_bytes = None
-                        missing_fields.append("size_bytes")
-                except (ValueError, TypeError):
-                    missing_fields.append("size_bytes")
-            else:
+            size_bytes = parse_install_size_bytes(appdetails_data.get("pc_requirements"))
+            if size_bytes is None:
                 missing_fields.append("size_bytes")
 
         achievement_count = None
@@ -282,7 +341,7 @@ def normalize_features(bundle: RawBundle) -> pd.DataFrame:
         is_early_access = None
         early_access_days = None
         if appdetails_success:
-            is_early_access = appdetails_data.get("is_early_access", False)
+            is_early_access = parse_is_early_access(appdetails_data.get("genres"))
 
         # Deck compatibility (SteamDeck)
         deck_compat = None

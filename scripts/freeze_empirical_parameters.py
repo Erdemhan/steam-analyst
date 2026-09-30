@@ -47,11 +47,15 @@ class FrozenBounds:
         tag_distance_search_stats: Dict with keys 'cluster_count',
             'median_cluster_size', 'threshold_source' recording the outcome of
             the search.
+        unfrozen_features: Log-scaled features with no observed values in the run
+            (e.g. early_access_days, which the documented APIs do not provide);
+            they receive no bounds.
     """
 
     complexity_bounds: dict[str, tuple[float, float]]
     tag_distance_threshold: float
     tag_distance_search_stats: dict
+    unfrozen_features: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -104,15 +108,15 @@ def compute_frozen_bounds(
 
     # Compute complexity bounds: 5th/95th percentile of log10(x+1) for each feature
     complexity_bounds = {}
+    unfrozen_features: list[str] = []
     for feature in LOG_SCALED_FEATURES:
         if feature not in enriched.columns:
             raise ValueError(f"Feature {feature} not found in enriched data")
 
         values = enriched[feature].dropna()
         if len(values) == 0:
-            raise ValueError(
-                f"Feature {feature} has no non-null values in enriched data"
-            )
+            unfrozen_features.append(feature)
+            continue
 
         log_values = np.log10(values + 1)
         p5 = np.percentile(log_values, 5)
@@ -179,6 +183,7 @@ def compute_frozen_bounds(
         complexity_bounds=complexity_bounds,
         tag_distance_threshold=tag_distance_threshold,
         tag_distance_search_stats=tag_distance_search_stats,
+        unfrozen_features=tuple(unfrozen_features),
     )
 
 
@@ -270,6 +275,12 @@ def format_formulation_snippet(
         if feature in bounds.complexity_bounds:
             a, b = bounds.complexity_bounds[feature]
             bounds_records.append(f"- `{feature}`: [{a:.6f}, {b:.6f}]")
+
+    for feature in bounds.unfrozen_features:
+        bounds_records.append(
+            f"- `{feature}`: not frozen (no observed values in the run; the feature "
+            "stays at the 0.5 midpoint fallback)"
+        )
 
     bounds_str = "\n".join(bounds_records)
 

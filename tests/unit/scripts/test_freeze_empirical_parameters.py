@@ -317,6 +317,32 @@ class TestComputeFrozenBounds:
         finally:
             conn.close()
 
+    def test_feature_without_observed_values_is_left_unfrozen(
+        self, temp_db: Path, analysis_params: AnalysisParams
+    ):
+        """A log-scaled feature that is NULL for every row is skipped, not fatal."""
+        conn = get_connection(temp_db)
+        try:
+            run_id = create_run(
+                conn, config={"test": True}, parameters_version="test_v1"
+            )
+            appids = list(range(100, 150))
+            enriched = _make_enriched_frame(appids, early_access_days=[None] * 50)
+            write_enriched(conn, run_id, enriched)
+            update_run_status(conn, run_id, "succeeded")
+
+            bounds = compute_frozen_bounds(conn, run_id, analysis_params)
+
+            assert bounds.unfrozen_features == ("early_access_days",)
+            assert "early_access_days" not in bounds.complexity_bounds
+            assert "size_bytes" in bounds.complexity_bounds
+
+            snippet = format_formulation_snippet(run_id, date(2026, 9, 30), bounds)
+            assert "`early_access_days`: not frozen" in snippet.prose_record
+            assert "early_access_days" not in snippet.toml_block_update
+        finally:
+            conn.close()
+
     def test_non_succeeded_run_raises(
         self, temp_db: Path, analysis_params: AnalysisParams
     ):

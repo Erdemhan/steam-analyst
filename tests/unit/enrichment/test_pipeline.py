@@ -263,6 +263,23 @@ class TestBuildEnrichedFrame:
         # Verify appids
         assert set(frame["appid"]) == {100, 101}
 
+    def test_imputed_features_json_lists_feature_names(
+        self, simple_bundle, simple_catalog, basic_params
+    ):
+        """imputed_features_json holds a JSON list of imputed feature names."""
+        import json
+
+        frame, _ = build_enriched_frame(simple_bundle, simple_catalog, basic_params)
+        valid = {
+            "size_bytes", "early_access_days", "dev_title_count", "simplicity_tag_score",
+            "complexity_tag_score", "achievement_count", "dlc_count", "platform_count",
+            "language_count",
+        }
+        for raw in frame["imputed_features_json"]:
+            names = json.loads(raw)
+            assert isinstance(names, list)
+            assert set(names) <= valid
+
     def test_free_to_play_revenue_is_nan(self, simple_bundle, simple_catalog, basic_params):
         """Test that F2P games have NaN revenue, not 0."""
         frame, _ = build_enriched_frame(

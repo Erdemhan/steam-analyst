@@ -35,7 +35,7 @@ from .revenue import (
     estimate_revenue,
     compute_effort_adjusted_return,
 )
-from .complexity import compute_complexity_score
+from .complexity import compute_complexity_details
 
 logger = logging.getLogger(__name__)
 
@@ -215,7 +215,7 @@ def build_enriched_frame(
     revenue_df = estimate_revenue(sales_df, frame["price_usd"], params)
 
     # Step 8: Compute complexity score
-    complexity_score, imputed_features_df = compute_complexity_score(
+    complexity_score, _contributions, imputed_features_df = compute_complexity_details(
         frame, tags_df, params
     )
 
@@ -258,13 +258,10 @@ def build_enriched_frame(
     # Serialize imputed features as JSON
     imputed_json_list = []
     for appid in result.index:
-        imputed_dict = {}
-        for col in imputed_features_df.columns:
-            if appid in imputed_features_df.index:
-                # imputed_features_df[col] is a Series; check if this row was imputed
-                if pd.notna(imputed_features_df.loc[appid, col]):
-                    imputed_dict[col] = bool(imputed_features_df.loc[appid, col])
-        imputed_json_list.append(json.dumps(imputed_dict))
+        imputed_names = [
+            col for col in imputed_features_df.columns if bool(imputed_features_df.loc[appid, col])
+        ]
+        imputed_json_list.append(json.dumps(imputed_names))
     result["imputed_features_json"] = imputed_json_list
 
     # Add sales and revenue columns

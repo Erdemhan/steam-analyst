@@ -20,7 +20,19 @@ logger = logging.getLogger(__name__)
 def compute_complexity_score(
     frame: pd.DataFrame, tags: pd.DataFrame, params: EnrichmentParams
 ) -> tuple[pd.Series, pd.DataFrame]:
-    """Compute complexity_score for every candidate.
+    """Compute complexity_score and per-feature contributions for every candidate.
+
+    Thin wrapper around compute_complexity_details that drops the imputation flags.
+    See that function for the full description.
+    """
+    score, contributions, _ = compute_complexity_details(frame, tags, params)
+    return score, contributions
+
+
+def compute_complexity_details(
+    frame: pd.DataFrame, tags: pd.DataFrame, params: EnrichmentParams
+) -> tuple[pd.Series, pd.DataFrame, pd.DataFrame]:
+    """Compute complexity_score, per-feature contributions and imputation flags.
 
     Implements FORMULATION.md section 4: C_i = clip( Σ_f w_f · n_f(x_{i,f}) , 0, 1 )
     with all nine features, their locked weights, and median imputation for missing data.
@@ -32,16 +44,18 @@ def compute_complexity_score(
         params: EnrichmentParams -- weights, complexity_bounds, simplicity_tags, complexity_tags.
 
     Returns:
-        (complexity_score, contributions): complexity_score is a pd.Series in [0,1]
-        (or NaN for rows with too much missing data) indexed like frame. contributions
-        is a DataFrame, one column per feature, holding each feature's weighted
-        contribution (w_f * n_f(x)) for that row.
+        (complexity_score, contributions, imputed): complexity_score is a pd.Series in
+        [0,1] (or NaN for rows with too much missing data) indexed like frame.
+        contributions is a DataFrame, one column per feature, holding each feature's
+        weighted contribution (w_f * n_f(x)) for that row. imputed is a boolean
+        DataFrame with the same shape, True where the feature's raw input was
+        missing and the row's value was imputed at the cohort median.
 
     Raises:
         ValueError: If frame is missing required columns or has shape issues.
     """
     if frame.empty:
-        return pd.Series(dtype=float), pd.DataFrame()
+        return pd.Series(dtype=float), pd.DataFrame(), pd.DataFrame()
 
     # Threshold for too-much-missing: if more than this fraction of a row's
     # features are both raw-missing (NaN in input) AND log-scaled-unnormalizable
@@ -203,4 +217,11 @@ def compute_complexity_score(
     too_much_missing = (raw_missing_counts / len(feature_specs)) > TOO_MUCH_MISSING_THRESHOLD
     complexity_score[too_much_missing] = np.nan
 
-    return complexity_score, contributions
+    imputed = pd.DataFrame(
+        {
+            feature_col: imputed_flags[feature_col].reindex(frame.index).fillna(False).astype(bool)
+            for feature_col, _, _, _ in feature_specs
+        },
+        index=frame.index,
+    )
+    return complexity_score, contributions, imputed
