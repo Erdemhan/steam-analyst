@@ -26,7 +26,7 @@ publisher_blocklist = [
 # --- acquisition rate limiting (operational tunables, not FORMULATION.md-locked) ---
 [acquisition]
 steamspy_page_delay_seconds = 0.5
-steam_requests_per_minute = 60.0
+steam_requests_per_minute = 30.0
 max_retries = 3
 backoff_base_seconds = 1.0
 backoff_max_seconds = 60.0
