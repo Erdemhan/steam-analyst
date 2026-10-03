@@ -91,13 +91,13 @@ _COLUMN_HELP_TR = {
         "5 oyun gerekir."
     ),
     "Talep (z)": (
-        "Talep göstergesi. Arketipte son 24 ayda çıkan oyunların tahmini satışının "
+        "Talep göstergesi. Arketipte son 48 ayda çıkan oyunların tahmini satışının "
         "medyanı, tüm arketipler arasında z-skoruna çevrilir. 0 ortalamadır, +1 "
         "ortalamanın bir standart sapma üstüdür. Yüksek değer, daha yüksek talep "
         "anlamına gelir."
     ),
     "Rekabet (z)": (
-        "Rekabet göstergesi. Arketipte son 24 ayda çıkan oyun sayısı (katalog "
+        "Rekabet göstergesi. Arketipte son 48 ayda çıkan oyun sayısı (katalog "
         "büyümesine göre düzeltilmiş), tüm arketipler arasında z-skoruna çevrilir. "
         "Yüksek değer, daha kalabalık bir pazar demektir. Fırsat skorundan "
         "çıkarılır."
@@ -124,7 +124,7 @@ _COLUMN_HELP_TR = {
         "kapsamı yaklaşık olarak gösterir."
     ),
     "Penceredeki çıkışlar": (
-        "Arketipte son 24 ayda çıkan oyun sayısı. Rekabet (z) bu sayıdan türetilir."
+        "Arketipte son 48 ayda çıkan oyun sayısı. Rekabet (z) bu sayıdan türetilir."
     ),
     "Etiket": "Steam etiketi. Satırdaki değerler bu etikete sahip oyunlar için hesaplanır.",
     "Olumlu oran": (
@@ -133,7 +133,7 @@ _COLUMN_HELP_TR = {
     ),
     "Fiyat ($)": "Bu etikete sahip oyunların medyan mağaza fiyatı (ABD doları).",
     "Alt pencere no": (
-        "Son 24 aylık pencerenin bölündüğü dilimin sırası. 0 en yeni dilimdir, "
+        "Son 48 aylık pencerenin bölündüğü dilimin sırası. 0 en yeni dilimdir, "
         "numara büyüdükçe dilim geçmişe gider."
     ),
     "Alt pencere başı": "Bu dilimin başlangıç tarihi.",
@@ -747,7 +747,7 @@ def _render_simple_summary(report, bounds_frozen: bool | None = None) -> None:
                 top = ranked.iloc[0]
                 st.markdown(
                     f"**Öne çıkan oyun grubu:** {_group_name(top['label'])}. "
-                    f"{int(top['n_games'])} oyundan oluşuyor, son 24 ayda "
+                    f"{int(top['n_games'])} oyundan oluşuyor, son 48 ayda "
                     f"{int(top['releases_in_window'])} oyun çıkmış, bu oyunların "
                     f"ortanca tahmini satışı yaklaşık {top['median_estimated_sales_mid']:,.0f} "
                     "adet. Talep, rekabet ve basitlik birlikte değerlendirildiğinde skoru "
@@ -1014,7 +1014,7 @@ def render_analysis_detail_page(conn: sqlite3.Connection, settings: Settings) ->
 
     st.subheader("Etiket eğilimleri")
     st.caption(
-        "Her arketip için son 24 aylık pencere 4'er aylık 6 dilime bölünür ve her "
+        "Her arketip için son 48 aylık pencere 4'er aylık 12 dilime bölünür ve her "
         "dilimde o arketipte çıkan oyunların medyan tahmini satışı hesaplanır. "
         "Burada çıkış sayısı değil, çıkan oyunların medyan satışı gösterilir. "
         "Dilim numarası 0 en yeni dilimdir ve numara büyüdükçe geçmişe gidilir. "

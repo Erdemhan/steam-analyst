@@ -302,12 +302,12 @@ with at least 5 games released within `W`. Three changes follow.
    These shares only describe an archetype and take no part in clustering or scoring.
 
 **Frozen threshold (run 20261003T162937824Z-28423c, 2026-10-03).** Distance-cut
-threshold = 0.9404880916 (run-local search under the rule above), giving 69 tag clusters
-(median 4 tags per cluster) of which 3 hold at least 5 games released within `W`, each
-with exactly 5. Only 29 of the 285 simple-subset games were released within `W`
-(2024-10 to 2026-09), so the number of scorable archetypes is limited by the sample, not
-by the threshold. It supersedes the earlier value 0.9444444444 (run
-20260930T194128376Z-197441), which was derived under the previous method.
+threshold = 0.9366572312 (run-local search under the rule above with W = 48), giving 70
+tag clusters (median 4 tags per cluster) of which 10 hold at least 5 games released
+within `W`. 108 of the 285 simple-subset games were released within `W` (2022-10 to
+2026-09) and 74 of them fall in those 10 archetypes. It supersedes the earlier value
+0.9444444444 (run 20260930T194128376Z-197441), which was derived under the previous
+method.
 
 ```
 D_k = z( median_{i∈k} S_i^mid  over releases in the trailing window W )
@@ -319,9 +319,16 @@ K_k = z( count of releases in k within W , adjusted for catalog growth )
 
 **✅ LOCKED (user-approved 2026-09-20).**
 
-- `W = 24` months — favours reacting to current trends over historical averaging;
-  the noise risk this introduces for small archetypes is bounded by the minimum
-  cluster size rule below.
+- `W = 48` months (changed from 24 on 2026-10-03, user-approved). With W = 24 only 29
+  of the 285 simple-subset games of run 20261003T162937824Z-28423c fell inside the
+  window and at most 3 archetypes could reach the minimum cluster size. With W = 48,
+  108 games fall inside it and 10 archetypes reach it. Among the values tried
+  (24, 36, 48, 60, 72), 48 is the smallest that gave at least 10 scorable archetypes
+  while keeping the distance threshold in the range of the earlier freezes (60 and
+  72 months gave thresholds near 0.64 and 0.71). A longer window favours archetype
+  coverage over reacting to current trends, and the noise risk this introduces for
+  small archetypes is bounded by the minimum cluster size rule below. Trend
+  sub-windows stay 4 months wide, so W = 48 gives 12 of them.
 - `w_D = 0.40`, `w_K = 0.30`, `w_Σ = 0.30` — demand weighted slightly above
   competition and simplicity, since a simple, low-competition archetype nobody
   wants is not an opportunity.
@@ -464,9 +471,9 @@ min_votes = 0
 [analysis]
 simplicity_percentile = 0.40
 # tag_distance_threshold: frozen from run 20261003T162937824Z-28423c (ADR-012)
-tag_distance_threshold = 0.9404880915937854
+tag_distance_threshold = 0.9366572311889352
 clustering_linkage = "average"
-trailing_window_months = 24
+trailing_window_months = 48
 min_cluster_size = 5
 min_tag_votes = 0
 max_tags_per_game = 20

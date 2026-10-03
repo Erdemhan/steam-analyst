@@ -91,7 +91,7 @@ _STEPS = [
     ),
     (
         "7. Arketip skorlama",
-        "Her arketip için: talep = son 24 ayda çıkan oyunların medyan tahmini satışı; "
+        "Her arketip için: talep = son 48 ayda çıkan oyunların medyan tahmini satışı; "
         "rekabet = aynı pencerede çıkan oyun sayısı (katalog büyümesine göre "
         "düzeltilmiş); basitlik = 1 - medyan karmaşıklık. Üçü de arketipler arasında "
         "z-skoruna çevrilir. Fırsat skoru = 0,40 x talep - 0,30 x rekabet + "
@@ -99,7 +99,7 @@ _STEPS = [
     ),
     (
         "8. Eğilimler",
-        "Son 24 aylık pencere 4'er aylık 6 dilime bölünür. Her dilimde arketipin "
+        "Son 48 aylık pencere 4'er aylık 12 dilime bölünür. Her dilimde arketipin "
         "medyan tahmini satışı hesaplanır ve dilim numarasına karşı doğrusal regresyonla "
         "bir eğim üretilir. Betimleyicidir, anlamlılık testi içermez.",
     ),
@@ -164,8 +164,8 @@ _OPEN_ITEMS = [
         "çıkan 203 oyunluk alt kümesinden türetildi. Örneklem popüler oyunlara kaydığı "
         "için sınırlar tüm adaylara göre yukarı kayık olabilir. Kümeleme mesafe eşiği "
         "3000 uygulamalık bir taramanın 285 oyunluk basit alt kümesinden donduruldu. "
-        "Bu alt kümedeki oyunların yalnızca 29'u son 24 ayda çıktığı için arketip başına "
-        "en az 5 oyun şartını yalnızca 3 arketip sağlayabildi.",
+        "Bu alt kümedeki oyunların yalnızca 108'i son 48 ayda çıktı ve arketip başına en az "
+        "5 oyun şartını 10 arketip sağlayabildi.",
         "Daha geniş bir taramadan sonra sınırların ve eşiğin yeniden türetilmesi "
         "FORMULATION.md kararı gerektirir (kullanıcı onayı şart).",
     ),

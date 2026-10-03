@@ -152,7 +152,7 @@ class AnalysisParams:
             run's candidate set, not a fixed absolute complexity ceiling.
             apply_simplicity_filter computes the actual C_i cutoff value per
             run from this percentile. Locked value: 0.40.
-        trailing_window_months: W. Locked value: 24.
+        trailing_window_months: W. Locked value: 48.
         min_cluster_size: Locked value: 5 games.
         opportunity_weights: {'demand': 0.40, 'competition': 0.30,
             'simplicity': 0.30} -- w_D, w_K, w_Sigma.

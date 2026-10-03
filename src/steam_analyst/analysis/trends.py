@@ -43,11 +43,11 @@ def compute_tag_trends(
         median_estimated_sales_mid across sub-windows in units of
         USD-equivalent per sub-window) and slope_n_subwindows (count of
         sub-windows actually used, i.e. with n_games >= 1). Sub-windows are
-        fixed-width quarters (6 sub-windows of 4 months each for W=24).
+        fixed 4-month slices (12 sub-windows for W=48).
 
     Preconditions:
         - params.trailing_window_months is evenly divisible by 4 for a clean
-          partition (e.g., 24 months -> 6 sub-windows of 4 months each).
+          partition (e.g., 48 months -> 12 sub-windows of 4 months each).
 
     Postconditions:
         - A cluster_id with fewer than 2 sub-windows containing at least one
