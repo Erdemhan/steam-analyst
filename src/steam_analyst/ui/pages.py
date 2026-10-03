@@ -983,7 +983,10 @@ def render_analysis_detail_page(conn: sqlite3.Connection, settings: Settings) ->
         "kümesi). Fırsat skoru = 0,40 x talep - 0,30 x rekabet + 0,30 x basitlik. "
         "Üç bileşen de arketipler arasında z-skoruna çevrilmiştir (0 = ortalama). "
         "Skor parasal bir değer değil, arketipleri birbiriyle sıralamak için "
-        "kullanılan göreli bir ölçüdür. Ayrıntı için Bilgi sayfasına bakın."
+        "kullanılan göreli bir ölçüdür. Singleplayer, Multiplayer ve Co-op sütunları "
+        "arketipteki oyunların kaçında o etiketin bulunduğunu gösterir (0-1). Bu "
+        "etiketler çok yaygın olduğu için kümelemeye dahil edilmez, yalnızca arketipin "
+        "neyi kapsadığını açıklar. Ayrıntı için Bilgi sayfasına bakın."
     )
     _render_table(
         report.opportunity_matrix,

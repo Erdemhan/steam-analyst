@@ -9,6 +9,7 @@ sections 4/6 (prose record) and section 8 (machine-readable toml block).
 """
 
 import argparse
+import dataclasses
 import sqlite3
 from dataclasses import dataclass
 from datetime import date
@@ -146,15 +147,8 @@ def compute_frozen_bounds(
     else:
         # Create a params copy with tag_distance_threshold forced to None
         # to trigger the search in cluster_tags
-        params_for_search = AnalysisParams(
-            simplicity_percentile=params.simplicity_percentile,
-            trailing_window_months=params.trailing_window_months,
-            min_cluster_size=params.min_cluster_size,
-            opportunity_weights=params.opportunity_weights,
-            min_tag_votes=params.min_tag_votes,
-            max_tags_per_game=params.max_tags_per_game,
-            tag_distance_threshold=None,  # Force search
-            clustering_linkage=params.clustering_linkage,
+        params_for_search = dataclasses.replace(
+            params, tag_distance_threshold=None  # Force search
         )
 
         # Call cluster_tags to perform the search

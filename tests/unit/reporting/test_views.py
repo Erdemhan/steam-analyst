@@ -31,6 +31,20 @@ class TestBuildOpportunityMatrixView:
             "releases_in_window": [8, 3, 15, 2, 7],
         })
 
+    def test_mode_share_columns_renamed_rounded_and_optional(self, sample_matrix):
+        with_shares = sample_matrix.assign(
+            singleplayer_share=[0.8333, 0.5, 1.0, 0.25, 0.6667],
+            multiplayer_share=[0.1, 0.9, 0.0, 0.5, 0.3333],
+            coop_share=[0.0, 0.4, 0.0, 0.125, 0.2],
+        )
+
+        result = build_opportunity_matrix_view(with_shares)
+
+        assert result.loc[result["Archetype"] == "Puzzle", "Singleplayer (share)"].iloc[0] == 0.83
+        assert "Multiplayer (share)" in result.columns
+        assert "Co-op (share)" in result.columns
+        assert "Singleplayer (share)" not in build_opportunity_matrix_view(sample_matrix).columns
+
     def test_sorted_descending_by_default(self, sample_matrix):
         """A fixture matrix is returned sorted by opportunity_score descending."""
         result = build_opportunity_matrix_view(sample_matrix)

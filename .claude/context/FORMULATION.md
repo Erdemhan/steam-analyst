@@ -281,10 +281,33 @@ frozen for comparability across later runs. The run that fixes it must be record
 here once it exists (run ID, date, resulting threshold, resulting cluster-count and
 median cluster size).
 
-**Frozen threshold (run 20260930T194128376Z-197441, 2026-09-30).** Distance-cut
-threshold = 0.9444444444 (run-local search), giving 52 clusters with a median cluster
-size of 5.0. Only 2 of the 52 clusters cleared the minimum-cluster-size rule within `W`
-in this run, which is consistent with the small 203-game sample.
+**Amendment (user-approved 2026-10-03) — generic-tag exclusion and threshold search.**
+On the 285-game simple subset of run 20261003T162937824Z-28423c, the tags carried by
+most games (Singleplayer, Indie, Action, Adventure, Multiplayer, ...) merged into a single
+tag cluster that received 82% of the games by plurality vote, leaving a single archetype
+with at least 5 games released within `W`. Three changes follow.
+
+1. Before the distance matrix is built, every tag carried by more than
+   `generic_tag_max_share = 0.15` of the clustered games is excluded from clustering and
+   from the plurality-vote game assignment. The share is computed over the games of the
+   simple subset that have at least one tag, before the `max_tags_per_game` cap.
+   A game whose tags are all excluded receives no archetype.
+2. The pre-freeze threshold search picks the smallest merge distance that maximizes the
+   number of clusters holding at least `min_cluster_size` games released within `W` after
+   plurality-vote assignment, which is the rule below that decides whether a cluster is
+   scored. It previously counted member tags per cluster, which does not measure whether
+   a cluster can be scored.
+3. For each archetype the stored result also reports the share of its games that carry
+   the Singleplayer, Multiplayer and Co-op tags (computed before the exclusion in (1)).
+   These shares only describe an archetype and take no part in clustering or scoring.
+
+**Frozen threshold (run 20261003T162937824Z-28423c, 2026-10-03).** Distance-cut
+threshold = 0.9404880916 (run-local search under the rule above), giving 69 tag clusters
+(median 4 tags per cluster) of which 3 hold at least 5 games released within `W`, each
+with exactly 5. Only 29 of the 285 simple-subset games were released within `W`
+(2024-10 to 2026-09), so the number of scorable archetypes is limited by the sample, not
+by the threshold. It supersedes the earlier value 0.9444444444 (run
+20260930T194128376Z-197441), which was derived under the previous method.
 
 ```
 D_k = z( median_{i∈k} S_i^mid  over releases in the trailing window W )
@@ -440,13 +463,14 @@ min_votes = 0
 # --- analysis: simplicity threshold (FORMULATION.md §3a) ---
 [analysis]
 simplicity_percentile = 0.40
-# tag_distance_threshold: frozen from run 20260930T194128376Z-197441 (ADR-012)
-tag_distance_threshold = 0.9444444444444445
+# tag_distance_threshold: frozen from run 20261003T162937824Z-28423c (ADR-012)
+tag_distance_threshold = 0.9404880915937854
 clustering_linkage = "average"
 trailing_window_months = 24
 min_cluster_size = 5
 min_tag_votes = 0
 max_tags_per_game = 20
+generic_tag_max_share = 0.15
 
 # --- analysis: opportunity score (FORMULATION.md §6) ---
 [analysis.opportunity_weights]

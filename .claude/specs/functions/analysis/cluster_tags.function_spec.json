@@ -2,9 +2,9 @@
   "module": "analysis",
   "function_name": "cluster_tags",
   "file_path": "src/steam_analyst/analysis/clustering.py",
-  "description": "Implements FORMULATION.md section 6's locked clustering method: agglomerative hierarchical clustering over a Jaccard tag-distance matrix, no genre anchor, empirically-derived distance-cut threshold.",
+  "description": "Implements FORMULATION.md section 6's locked clustering method: agglomerative hierarchical clustering over a Jaccard tag-distance matrix, no genre anchor, generic tags excluded, empirically-derived distance-cut threshold.",
   "signature": "def cluster_tags(tags: pd.DataFrame, frame: pd.DataFrame, params: AnalysisParams) -> TagClusterResult",
-  "docstring": "Cluster tags into archetypes and assign games to them.\n\nArgs:\n    tags: The run's tag rows for the candidate set, pre-filtered to votes >= params.min_tag_votes.\n    frame: The enriched frame (used only to restrict tags to appids actually present in the candidate set, and available for any future archetype-level feature needs).\n    params: AnalysisParams.tag_distance_threshold (possibly None, pre-freeze), clustering_linkage.\n\nReturns:\n    A TagClusterResult.\n\nAlgorithm:\n    1. distance = compute_jaccard_tag_distance(tags).\n    2. Run scipy.cluster.hierarchy.linkage on the condensed form of `distance` with method=params.clustering_linkage (assumed 'average' per config.AnalysisParams' flagged judgment call).\n    3. Determine the distance cut: if params.tag_distance_threshold is not None, use it VERBATIM (do not re-derive) -- this is the frozen, comparable-across-runs case. If it IS None (pre-freeze, e.g. run 1 itself), perform a run-local threshold search: scan the distinct merge-distances in the linkage's own distance column (ascending), and pick the SMALLEST distance whose resulting flat clustering (scipy.cluster.hierarchy.fcluster with criterion='distance') has at least 50% of its clusters at or above params.min_cluster_size in member-tag count. This run-local search's resulting threshold is what a subsequent scripts/freeze_empirical_parameters.py run would examine to decide the value to actually freeze (this function does not write parameters.toml itself; that remains the dedicated script's job per ADR-012).\n    4. Assign each game to a cluster via plurality vote of its own tags' cluster memberships (see TagClusterResult's own spec for the tie rule).\n    5. Label every cluster via label_cluster.\n\nDeterminism: for a fixed (tags, frame, params) input, produces bit-identical output across repeated calls -- scipy's linkage/fcluster are deterministic given a fixed distance matrix and method, and this function introduces no randomness.\n",
+  "docstring": "Cluster tags into archetypes and assign games to them.\n\nArgs:\n    tags: The run's tag rows for the candidate set, pre-filtered to votes >= params.min_tag_votes.\n    frame: The enriched frame (used only to restrict tags to appids actually present in the candidate set, and available for any future archetype-level feature needs).\n    params: AnalysisParams.tag_distance_threshold (possibly None, pre-freeze), clustering_linkage.\n\nReturns:\n    A TagClusterResult.\n\nAlgorithm:\n    0. Drop every tag carried by more than params.generic_tag_max_share of the games in the candidate set (before the per-game cap), from both clustering and plurality-vote assignment. Share 1.0 disables this. The dropped tags are returned in TagClusterResult.excluded_generic_tags.\n    1. distance = compute_jaccard_tag_distance(tags).\n    2. Run scipy.cluster.hierarchy.linkage on the condensed form of `distance` with method=params.clustering_linkage (assumed 'average' per config.AnalysisParams' flagged judgment call).\n    3. Determine the distance cut: if params.tag_distance_threshold is not None, use it VERBATIM (do not re-derive) -- this is the frozen, comparable-across-runs case. If it IS None (pre-freeze, e.g. run 1 itself), perform a run-local threshold search: scan the distinct merge-distances in the linkage's own distance column (ascending) and pick the SMALLEST distance that maximizes the number of clusters holding at least params.min_cluster_size games released within the trailing window W after plurality-vote assignment (the scoring rule; a frame without release_date_parsed counts every game), falling back to the maximum merge distance, source 'run_local_search_fallback_max', if no distance yields such a cluster). This run-local search's resulting threshold is what a subsequent scripts/freeze_empirical_parameters.py run would examine to decide the value to actually freeze (this function does not write parameters.toml itself; that remains the dedicated script's job per ADR-012).\n    4. Assign each game to a cluster via plurality vote of its own tags' cluster memberships (see TagClusterResult's own spec for the tie rule).\n    5. Label every cluster via label_cluster.\n    6. Compute TagClusterResult.cluster_mode_shares: per cluster, the share of its assigned games carrying each of Singleplayer, Multiplayer and Co-op, from the tags before the generic-tag exclusion. Descriptive only.\n\nDeterminism: for a fixed (tags, frame, params) input, produces bit-identical output across repeated calls -- scipy's linkage/fcluster are deterministic given a fixed distance matrix and method, and this function introduces no randomness.\n",
   "preconditions": [
     "params.clustering_linkage in {'single','complete','average'}",
     "tags is already filtered to votes >= params.min_tag_votes by the caller (run_analysis) or by this function itself if not already filtered -- MUST be filtered before compute_jaccard_tag_distance is called either way"
@@ -15,19 +15,96 @@
     "params_used['threshold_source'] correctly reflects whether the frozen value or the run-local search was used"
   ],
   "edge_cases": [
-    {"input": "Two obviously separated tag groups (e.g. {roguelike, permadeath, procedural} vs {visual-novel, dating-sim, story-rich}, disjoint game sets)", "expected_behavior": "recovers exactly those two clusters, per the module's own testing requirement"},
-    {"input": "tags is empty after min_tag_votes filtering", "expected_behavior": "returns an empty TagClusterResult (no clusters, empty assignments) without raising"},
-    {"input": "params.tag_distance_threshold is None and NO threshold in the run-local search satisfies the >=50%-of-clusters-at-min-size rule at any distinct merge distance (degenerate/tiny candidate set)", "expected_behavior": "falls back to the single coarsest cut (the maximum merge distance, i.e. one giant cluster) and records this fallback via a params_used['threshold_source'] value of 'run_local_search_fallback_max', with a warning event expected from the caller (run_analysis) -- this fallback path is this spec's own addition to handle a case FORMULATION.md's qualitative description does not cover"},
-    {"input": "A single tag survives filtering (degenerate case)", "expected_behavior": "one cluster containing that tag; every tagged game assigned to it"}
+    {
+      "input": "Two obviously separated tag groups (e.g. {roguelike, permadeath, procedural} vs {visual-novel, dating-sim, story-rich}, disjoint game sets)",
+      "expected_behavior": "recovers exactly those two clusters, per the module's own testing requirement"
+    },
+    {
+      "input": "tags is empty after min_tag_votes filtering",
+      "expected_behavior": "returns an empty TagClusterResult (no clusters, empty assignments) without raising"
+    },
+    {
+      "input": "params.tag_distance_threshold is None and NO threshold in the run-local search satisfies the no cluster reaches min-size rule at any distinct merge distance (degenerate/tiny candidate set)",
+      "expected_behavior": "falls back to the single coarsest cut (the maximum merge distance, i.e. one giant cluster) and records this fallback via a params_used['threshold_source'] value of 'run_local_search_fallback_max', with a warning event expected from the caller (run_analysis) -- this fallback path is this spec's own addition to handle a case FORMULATION.md's qualitative description does not cover"
+    },
+    {
+      "input": "A single tag survives filtering (degenerate case)",
+      "expected_behavior": "one cluster containing that tag; every tagged game assigned to it"
+    }
   ],
   "unit_tests": [
-    {"name": "test_deterministic_across_repeated_calls", "description": "Two calls with identical inputs produce identical TagClusterResult content, per the module's own testing requirement.", "inputs": {}, "expected": "assignments/cluster_labels/cluster_members identical across calls"},
-    {"name": "test_recovers_two_obviously_separated_groups", "description": "A synthetic set with two disjoint tag/game groups recovers exactly two clusters matching those groups, per the module's own testing requirement.", "inputs": {}, "expected": "2 clusters, membership matching the synthetic groups exactly"},
-    {"name": "test_frozen_threshold_used_verbatim", "description": "With params.tag_distance_threshold=0.4 set, the resulting flat clustering matches fcluster(..., t=0.4, criterion='distance') exactly, and params_used['threshold_source']=='frozen'.", "inputs": {"tag_distance_threshold": 0.4}, "expected": "clustering matches the direct fcluster call at t=0.4"},
-    {"name": "test_prefreeze_run_local_search_used_when_threshold_none", "description": "With params.tag_distance_threshold=None, params_used['threshold_source']=='run_local_search' and the resulting clusters satisfy the >=50%-at-min-size rule.", "inputs": {"tag_distance_threshold": null}, "expected": "threshold_source == 'run_local_search'; at least half of clusters have >= min_cluster_size tags"},
-    {"name": "test_empty_tags_returns_empty_result", "description": "Zero tags after filtering returns an empty TagClusterResult.", "inputs": {"tags": []}, "expected": "empty assignments, empty cluster dicts"}
+    {
+      "name": "test_deterministic_across_repeated_calls",
+      "description": "Two calls with identical inputs produce identical TagClusterResult content, per the module's own testing requirement.",
+      "inputs": {},
+      "expected": "assignments/cluster_labels/cluster_members identical across calls"
+    },
+    {
+      "name": "test_recovers_two_obviously_separated_groups",
+      "description": "A synthetic set with two disjoint tag/game groups recovers exactly two clusters matching those groups, per the module's own testing requirement.",
+      "inputs": {},
+      "expected": "2 clusters, membership matching the synthetic groups exactly"
+    },
+    {
+      "name": "test_frozen_threshold_used_verbatim",
+      "description": "With params.tag_distance_threshold=0.4 set, the resulting flat clustering matches fcluster(..., t=0.4, criterion='distance') exactly, and params_used['threshold_source']=='frozen'.",
+      "inputs": {
+        "tag_distance_threshold": 0.4
+      },
+      "expected": "clustering matches the direct fcluster call at t=0.4"
+    },
+    {
+      "name": "test_prefreeze_run_local_search_used_when_threshold_none",
+      "description": "With params.tag_distance_threshold=None, params_used['threshold_source']=='run_local_search' and the resulting clusters satisfy the >=50%-at-min-size rule.",
+      "inputs": {
+        "tag_distance_threshold": null
+      },
+      "expected": "threshold_source == 'run_local_search'; at least half of clusters have >= min_cluster_size tags"
+    },
+    {
+      "name": "test_empty_tags_returns_empty_result",
+      "description": "Zero tags after filtering returns an empty TagClusterResult.",
+      "inputs": {
+        "tags": []
+      },
+      "expected": "empty assignments, empty cluster dicts"
+    },
+    {
+      "name": "test_tag_above_share_is_excluded_from_clusters",
+      "description": "A tag on every game is listed in excluded_generic_tags and absent from every cluster when generic_tag_max_share=0.6.",
+      "inputs": {},
+      "expected": "excluded_generic_tags == ['G']"
+    },
+    {
+      "name": "test_exclusion_happens_before_per_game_cap",
+      "description": "With max_tags_per_game=1, a generic top-ranked tag does not crowd out the specific tag.",
+      "inputs": {},
+      "expected": "clustered tags == the specific tags"
+    },
+    {
+      "name": "test_picks_smallest_distance_maximizing_scorable_clusters",
+      "description": "Two disjoint 5-game groups give threshold 0.0 and two 5-game clusters.",
+      "inputs": {},
+      "expected": "distance_threshold == 0.0, cluster sizes [5, 5]"
+    },
+    {
+      "name": "test_shares_use_tags_from_before_generic_exclusion",
+      "description": "A tag excluded as generic still contributes to cluster_mode_shares.",
+      "inputs": {},
+      "expected": "Singleplayer share == 0.8"
+    },
+    {
+      "name": "test_out_of_window_games_force_a_coarser_cut",
+      "description": "Games released outside the trailing window do not count toward min_cluster_size in the threshold search.",
+      "inputs": {},
+      "expected": "threshold > 0.5 when games 3 and 6 are out of window"
+    }
   ],
-  "dependencies": ["compute_jaccard_tag_distance", "label_cluster", "TagClusterResult"],
+  "dependencies": [
+    "compute_jaccard_tag_distance",
+    "label_cluster",
+    "TagClusterResult"
+  ],
   "open_questions": [
     "See config.AnalysisParams' flagged judgment call: clustering_linkage and the exact run-local threshold-search procedure are this spec's own reasonable-default assumptions (average linkage; smallest cut clearing >=50% of clusters at min_cluster_size), not values FORMULATION.md itself locks numerically. Needs explicit user/architect confirmation before worker-coder treats this as authoritative, since a different linkage or search rule would produce different (non-reproducible-across-implementations) archetype boundaries for run 1."
   ]

@@ -97,13 +97,14 @@ min_votes = 0
 # --- analysis: simplicity threshold (FORMULATION.md §3a) ---
 [analysis]
 simplicity_percentile = 0.40
-# tag_distance_threshold: frozen from run 20260930T194128376Z-197441 (ADR-012)
-tag_distance_threshold = 0.9444444444444445
+# tag_distance_threshold: frozen from run 20261003T162937824Z-28423c (ADR-012)
+tag_distance_threshold = 0.9404880915937854
 clustering_linkage = "average"
 trailing_window_months = 24
 min_cluster_size = 5
 min_tag_votes = 0
 max_tags_per_game = 20
+generic_tag_max_share = 0.15
 
 # --- analysis: opportunity score (FORMULATION.md §6) ---
 [analysis.opportunity_weights]

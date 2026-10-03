@@ -150,6 +150,7 @@ _PARAM_TR = {
     "analysis.min_cluster_size": "Asgari arketip büyüklüğü (oyun)",
     "analysis.min_tag_votes": "Analizde asgari etiket oyu",
     "analysis.max_tags_per_game": "Analizde oyun başına en fazla etiket",
+    "analysis.generic_tag_max_share": "Kümelemeden çıkarılan genel etiket eşiği (oyunların payı)",
     "analysis.tag_distance_threshold": "Kümeleme mesafe eşiği",
     "analysis.opportunity_weights.demand": "Fırsat ağırlığı: talep",
     "analysis.opportunity_weights.competition": "Fırsat ağırlığı: rekabet",
@@ -158,12 +159,14 @@ _PARAM_TR = {
 
 _OPEN_ITEMS = [
     (
-        "Karmaşıklık sınırları ve kümeleme eşiği küçük bir örneklemden donduruldu",
-        "Normalizasyon sınırları ve kümeleme mesafe eşiği, en çok sahibi olan 1000 "
-        "uygulamanın 2020 sonrası çıkan 203 oyunluk alt kümesinden türetildi. Örneklem "
-        "popüler oyunlara kaydığı için sınırlar tüm adaylara göre yukarı kayık olabilir. "
-        "Bu eşikle 52 kümeden yalnızca 2'si asgari boyutu aşıp skorlanabildi.",
-        "Daha geniş bir çalıştırmadan sonra sınırların yeniden türetilmesi "
+        "Karmaşıklık sınırları küçük bir örneklemden donduruldu, skorlanabilen arketip sayısı az",
+        "Normalizasyon sınırları, en çok sahibi olan 1000 uygulamanın 2020 sonrası "
+        "çıkan 203 oyunluk alt kümesinden türetildi. Örneklem popüler oyunlara kaydığı "
+        "için sınırlar tüm adaylara göre yukarı kayık olabilir. Kümeleme mesafe eşiği "
+        "3000 uygulamalık bir taramanın 285 oyunluk basit alt kümesinden donduruldu. "
+        "Bu alt kümedeki oyunların yalnızca 29'u son 24 ayda çıktığı için arketip başına "
+        "en az 5 oyun şartını yalnızca 3 arketip sağlayabildi.",
+        "Daha geniş bir taramadan sonra sınırların ve eşiğin yeniden türetilmesi "
         "FORMULATION.md kararı gerektirir (kullanıcı onayı şart).",
     ),
     (

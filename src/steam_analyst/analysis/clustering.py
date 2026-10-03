@@ -5,17 +5,25 @@ matrix, agglomerative hierarchical clustering with no genre anchor, and an empir
 derived or frozen distance-cut threshold.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 import numpy as np
 import pandas as pd
 from scipy.cluster.hierarchy import linkage, fcluster
 from scipy.spatial.distance import squareform
 
+from steam_analyst.analysis.scoring import _filter_to_windowed_releases
 from steam_analyst.config.settings import AnalysisParams
 
 
 logger = logging.getLogger(__name__)
+
+PLAYER_MODE_TAGS: tuple[str, ...] = ("Singleplayer", "Multiplayer", "Co-op")
+MODE_SHARE_COLUMNS: dict[str, str] = {
+    "Singleplayer": "singleplayer_share",
+    "Multiplayer": "multiplayer_share",
+    "Co-op": "coop_share",
+}
 
 
 @dataclass(frozen=True)
@@ -41,6 +49,15 @@ class TagClusterResult:
             'threshold_source': 'frozen' | 'run_local_search' | 'run_local_search_fallback_max'}
             -- records whether AnalysisParams.tag_distance_threshold was used
             verbatim (frozen) or derived fresh by this run's own search.
+        excluded_generic_tags: Tags dropped before clustering because more than
+            AnalysisParams.generic_tag_max_share of the clustered games carry
+            them (sorted; empty when the exclusion is disabled or nothing
+            exceeded the share).
+        cluster_mode_shares: cluster_id -> {tag: share} for each tag in
+            PLAYER_MODE_TAGS, where share is the fraction of the games assigned
+            to that cluster that carry the tag. Computed from the tags before
+            the generic-tag exclusion and never used for clustering; it only
+            describes what an archetype covers.
     """
 
     assignments: pd.DataFrame
@@ -49,6 +66,8 @@ class TagClusterResult:
     cooccurrence: pd.DataFrame
     method: str
     params_used: dict
+    excluded_generic_tags: list[str] = field(default_factory=list)
+    cluster_mode_shares: dict[int, dict[str, float]] = field(default_factory=dict)
 
 
 def compute_jaccard_tag_distance(tags: pd.DataFrame) -> pd.DataFrame:
@@ -186,6 +205,9 @@ def cluster_tags(
         A TagClusterResult.
 
     Algorithm:
+        0. Drop every tag carried by more than params.generic_tag_max_share of
+           the games in the candidate set (before the per-game cap, so more
+           specific tags can enter each game's top max_tags_per_game).
         1. Filter tags to the candidate set in frame and apply max_tags_per_game
            limit per game.
         2. Compute the Jaccard tag-distance matrix.
@@ -196,10 +218,12 @@ def cluster_tags(
              (frozen, comparable-across-runs case).
            - If it IS None (pre-freeze), perform a run-local threshold search:
              scan the distinct merge-distances in the linkage's distance column
-             (ascending), pick the SMALLEST distance whose resulting flat
-             clustering has at least 50% of its clusters at or above
-             params.min_cluster_size in member-tag count.
-           - If no threshold satisfies the 50% rule, fall back to the maximum
+             (ascending) and pick the SMALLEST distance that maximizes the
+             number of clusters holding at least params.min_cluster_size
+             games released within the trailing window W after plurality-vote
+             assignment (the scoring rule of FORMULATION.md section 6). A frame
+             without a release_date_parsed column counts every game.
+           - If no distance yields such a cluster, fall back to the maximum
              merge distance (one giant cluster).
         5. Assign each game to a cluster via plurality vote of its own tags'
            cluster memberships.
@@ -211,6 +235,18 @@ def cluster_tags(
     # Filter tags to appids in frame
     candidate_appids = set(frame["appid"].unique())
     tags_filtered = tags[tags["appid"].isin(candidate_appids)].copy()
+    tags_all = tags_filtered.copy()
+
+    # Drop generic tags (carried by more than generic_tag_max_share of the games)
+    excluded_generic_tags: list[str] = []
+    if len(tags_filtered) > 0 and params.generic_tag_max_share < 1.0:
+        n_games_with_tags = tags_filtered["appid"].nunique()
+        games_per_tag = tags_filtered.groupby("tag")["appid"].nunique()
+        generic_mask = games_per_tag / n_games_with_tags > params.generic_tag_max_share
+        excluded_generic_tags = sorted(games_per_tag.index[generic_mask])
+        tags_filtered = tags_filtered[
+            ~tags_filtered["tag"].isin(excluded_generic_tags)
+        ].copy()
 
     # Apply max_tags_per_game limit: keep top-voted tags per game
     if len(tags_filtered) > 0 and params.max_tags_per_game is not None:
@@ -233,7 +269,8 @@ def cluster_tags(
                 "linkage": params.clustering_linkage,
                 "distance_threshold": None,
                 "threshold_source": "none_empty_tags"
-            }
+            },
+            excluded_generic_tags=excluded_generic_tags,
         )
 
     # Compute the Jaccard distance matrix
@@ -263,7 +300,9 @@ def cluster_tags(
                 "linkage": params.clustering_linkage,
                 "distance_threshold": None,
                 "threshold_source": "single_tag"
-            }
+            },
+            excluded_generic_tags=excluded_generic_tags,
+            cluster_mode_shares=_compute_mode_shares(assignments, tags_all),
         )
 
     # Convert distance matrix to condensed form for linkage
@@ -281,8 +320,20 @@ def cluster_tags(
         threshold_source = "frozen"
     else:
         # Pre-freeze: run-local threshold search
+        countable_appids = None
+        if "release_date_parsed" in frame.columns:
+            windowed = _filter_to_windowed_releases(
+                frame,
+                pd.DataFrame({"appid": frame["appid"].unique(), "cluster_id": 0}),
+                params.trailing_window_months,
+            )
+            countable_appids = set(windowed["appid"]) if len(windowed) else set()
         distance_threshold, threshold_source = _search_threshold(
-            Z, distance_df.index, params.min_cluster_size
+            Z,
+            distance_df.index,
+            tags_filtered,
+            params.min_cluster_size,
+            countable_appids,
         )
 
     # Perform flat clustering at the determined threshold
@@ -353,60 +404,106 @@ def cluster_tags(
             "linkage": params.clustering_linkage,
             "distance_threshold": distance_threshold,
             "threshold_source": threshold_source
-        }
+        },
+        excluded_generic_tags=excluded_generic_tags,
+        cluster_mode_shares=_compute_mode_shares(assignments, tags_all),
     )
+
+
+def _compute_mode_shares(
+    assignments: pd.DataFrame, tags_all: pd.DataFrame
+) -> dict[int, dict[str, float]]:
+    """Share of each cluster's games that carry each player-mode tag.
+
+    Args:
+        assignments: Game-to-cluster assignments (columns appid, cluster_id).
+        tags_all: Tag rows for the clustered games before any generic-tag
+            exclusion or per-game cap (columns appid, tag).
+
+    Returns:
+        cluster_id -> {tag: share} for each tag in PLAYER_MODE_TAGS.
+    """
+    games_with_tag = {
+        tag: set(tags_all.loc[tags_all["tag"] == tag, "appid"])
+        for tag in PLAYER_MODE_TAGS
+    }
+    shares: dict[int, dict[str, float]] = {}
+    for cluster_id, group in assignments.groupby("cluster_id"):
+        appids = set(group["appid"])
+        shares[int(cluster_id)] = {
+            tag: len(appids & games_with_tag[tag]) / len(appids)
+            for tag in PLAYER_MODE_TAGS
+        }
+    return shares
 
 
 def _search_threshold(
     Z: np.ndarray,
     tag_names: np.ndarray | list,
-    min_cluster_size: int
+    tags_filtered: pd.DataFrame,
+    min_cluster_size: int,
+    countable_appids: set | None = None,
 ) -> tuple[float, str]:
     """Search for a run-local distance threshold.
 
-    Scans the distinct merge-distances in the linkage matrix (ascending),
-    and picks the SMALLEST distance whose resulting flat clustering has at
-    least 50% of its clusters at or above min_cluster_size in member-tag count.
+    Scans the distinct merge-distances in the linkage matrix (ascending) and
+    picks the SMALLEST distance that maximizes the number of clusters holding
+    at least min_cluster_size countable games, where games are assigned to
+    clusters by plurality vote of their tags exactly as in cluster_tags.
 
     Args:
         Z: The linkage matrix from scipy.cluster.hierarchy.linkage.
         tag_names: The ordered tag names (index of the distance DataFrame).
-        min_cluster_size: Minimum cluster size to meet the 50% rule.
+        tags_filtered: Tag rows (columns appid, tag) that were clustered.
+        min_cluster_size: Minimum number of countable games for a cluster to be
+            scored.
+        countable_appids: Games that count toward min_cluster_size (those released
+            within the trailing window). None counts every game.
 
     Returns:
         (distance_threshold, threshold_source) where threshold_source is
-        'run_local_search' if a qualifying threshold was found, or
-        'run_local_search_fallback_max' if no threshold satisfied the rule
+        'run_local_search' if some distance yields a cluster of at least
+        min_cluster_size games, or 'run_local_search_fallback_max' otherwise
         (degenerate/tiny candidate set case).
     """
-    # Get distinct merge distances from the linkage matrix
-    distances = np.unique(Z[:, 2])
-    distances = np.sort(distances)
-
+    distances = np.sort(np.unique(Z[:, 2]))
     n_tags = len(tag_names)
 
+    tag_index = {tag: i for i, tag in enumerate(tag_names)}
+    appids = tags_filtered["appid"].unique()
+    app_index = {appid: i for i, appid in enumerate(appids)}
+    game_tag_counts = np.zeros((len(appids), n_tags))
+    np.add.at(
+        game_tag_counts,
+        (
+            tags_filtered["appid"].map(app_index).to_numpy(),
+            tags_filtered["tag"].map(tag_index).to_numpy(),
+        ),
+        1.0,
+    )
+
+    if countable_appids is None:
+        countable = np.ones(len(appids), dtype=bool)
+    else:
+        countable = np.array([appid in countable_appids for appid in appids])
+
+    best_count = 0
+    best_distance = None
     for distance in distances:
-        # Perform flat clustering at this distance
-        tag_cluster_ids = fcluster(Z, t=distance, criterion="distance")
+        labels = fcluster(Z, t=distance, criterion="distance")
+        n_clusters = int(labels.max())
+        membership = np.zeros((n_tags, n_clusters))
+        membership[np.arange(n_tags), labels - 1] = 1.0
+        # argmax returns the first maximum, i.e. the lowest cluster id on ties.
+        assigned = (game_tag_counts @ membership).argmax(axis=1)
+        games_per_cluster = np.bincount(assigned[countable], minlength=n_clusters)
+        n_scorable = int((games_per_cluster >= min_cluster_size).sum())
+        if n_scorable > best_count:
+            best_count = n_scorable
+            best_distance = distance
 
-        # Count cluster sizes (in terms of member tags)
-        cluster_sizes = {}
-        for cluster_id, tag_cluster_id in zip(range(n_tags), tag_cluster_ids):
-            if tag_cluster_id not in cluster_sizes:
-                cluster_sizes[tag_cluster_id] = 0
-            cluster_sizes[tag_cluster_id] += 1
+    if best_distance is not None:
+        return float(best_distance), "run_local_search"
 
-        # Check if at least 50% of clusters meet min_cluster_size
-        n_clusters = len(cluster_sizes)
-        clusters_above_min = sum(
-            1 for size in cluster_sizes.values()
-            if size >= min_cluster_size
-        )
-        pct_above_min = clusters_above_min / n_clusters if n_clusters > 0 else 0
-
-        if pct_above_min >= 0.5:
-            return distance, "run_local_search"
-
-    # Fallback: use the maximum distance (one giant cluster)
-    max_distance = distances[-1] if len(distances) > 0 else 0.0
+    max_distance = float(distances[-1]) if len(distances) > 0 else 0.0
     return max_distance, "run_local_search_fallback_max"

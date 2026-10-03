@@ -168,6 +168,10 @@ class AnalysisParams:
             on a run where a frozen value already exists.
         clustering_linkage: Agglomerative-clustering linkage criterion, e.g.
             'average' or 'complete'. Locked to 'average' (FORMULATION.md §6).
+        generic_tag_max_share: Tags carried by more than this share of the
+            clustered games are excluded from clustering and from the
+            plurality-vote game assignment (FORMULATION.md §6). In (0, 1];
+            1.0 disables the exclusion. Locked value: 0.15.
     """
 
     simplicity_percentile: float
@@ -178,6 +182,7 @@ class AnalysisParams:
     max_tags_per_game: int
     tag_distance_threshold: float | None
     clustering_linkage: str
+    generic_tag_max_share: float = 1.0
 
 
 @dataclass(frozen=True)

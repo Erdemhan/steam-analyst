@@ -21,6 +21,13 @@ OPPORTUNITY_MATRIX_COLUMN_MAPPING = {
     "releases_in_window": "Releases in Window",
 }
 
+# Columns present only in runs analyzed after player-mode shares were added.
+OPPORTUNITY_MATRIX_OPTIONAL_COLUMN_MAPPING = {
+    "singleplayer_share": "Singleplayer (share)",
+    "multiplayer_share": "Multiplayer (share)",
+    "coop_share": "Co-op (share)",
+}
+
 # Column name mappings for tag summary
 TAG_SUMMARY_COLUMN_MAPPING = {
     "tag": "Tag",
@@ -42,6 +49,9 @@ ROUNDING_SPECS = {
     "opportunity_score": 2,
     "median_estimated_sales_mid": 0,
     "median_complexity": 2,
+    "singleplayer_share": 2,
+    "multiplayer_share": 2,
+    "coop_share": 2,
     "median_complexity_score": 2,
     "median_review_positive_pct": 2,
     "median_price_usd": 0,
@@ -98,10 +108,12 @@ def build_opportunity_matrix_view(
 
     # Rename columns to human-readable names
     # Only rename columns that exist in the dataframe
+    all_columns = {
+        **OPPORTUNITY_MATRIX_COLUMN_MAPPING,
+        **OPPORTUNITY_MATRIX_OPTIONAL_COLUMN_MAPPING,
+    }
     rename_map = {
-        old: new
-        for old, new in OPPORTUNITY_MATRIX_COLUMN_MAPPING.items()
-        if old in result.columns
+        old: new for old, new in all_columns.items() if old in result.columns
     }
     result = result.rename(columns=rename_map)
 
@@ -109,9 +121,9 @@ def build_opportunity_matrix_view(
     # Keep all columns that exist, in the order they appear in the mapping
     final_cols = []
     for col in matrix.columns:
-        if col in OPPORTUNITY_MATRIX_COLUMN_MAPPING:
+        if col in all_columns:
             # Map to new column name
-            new_col = OPPORTUNITY_MATRIX_COLUMN_MAPPING[col]
+            new_col = all_columns[col]
             if new_col in result.columns:
                 final_cols.append(new_col)
         else:

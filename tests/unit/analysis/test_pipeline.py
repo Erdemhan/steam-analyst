@@ -257,11 +257,16 @@ class TestRunAnalysisFullSuccess:
         assert "cluster_members" in tag_clusters
         assert "method" in tag_clusters
         assert "params_used" in tag_clusters
+        assert "cluster_mode_shares" in tag_clusters
+        assert "excluded_generic_tags" in tag_clusters
 
         # Verify opportunity_matrix structure
         matrix = read_analysis_result(conn, run_id, "opportunity_matrix")
         assert "data" in matrix
         assert isinstance(matrix["data"], list)
+        for row in matrix["data"]:
+            for column in ("singleplayer_share", "multiplayer_share", "coop_share"):
+                assert column in row
 
         # Verify stage_complete event was emitted via on_event
         # Check if any event matches stage_complete

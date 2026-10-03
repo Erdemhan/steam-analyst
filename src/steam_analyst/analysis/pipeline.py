@@ -14,7 +14,7 @@ import json
 import pandas as pd
 import numpy as np
 
-from steam_analyst.analysis.clustering import cluster_tags
+from steam_analyst.analysis.clustering import MODE_SHARE_COLUMNS, cluster_tags
 from steam_analyst.analysis.errors import AnalysisError
 from steam_analyst.analysis.scoring import (
     build_opportunity_matrix,
@@ -286,6 +286,8 @@ def run_analysis(
             "assignments": cluster_result.assignments.to_dict(orient="records"),
             "cluster_labels": cluster_result.cluster_labels,
             "cluster_members": cluster_result.cluster_members,
+            "cluster_mode_shares": cluster_result.cluster_mode_shares,
+            "excluded_generic_tags": cluster_result.excluded_generic_tags,
             "method": cluster_result.method,
             "params_used": cluster_result.params_used,
         }
@@ -355,6 +357,12 @@ def run_analysis(
         # Add labels from cluster_result to matrix
         if len(matrix) > 0:
             matrix["label"] = matrix["cluster_id"].map(cluster_result.cluster_labels)
+            for mode_tag, column in MODE_SHARE_COLUMNS.items():
+                matrix[column] = matrix["cluster_id"].map(
+                    lambda cid, tag=mode_tag: cluster_result.cluster_mode_shares.get(
+                        int(cid), {}
+                    ).get(tag)
+                )
 
         # Write opportunity_matrix result
         matrix_payload = {
@@ -507,6 +515,8 @@ def _write_empty_analysis_results(
             "assignments": [],
             "cluster_labels": {},
             "cluster_members": {},
+            "cluster_mode_shares": {},
+            "excluded_generic_tags": [],
             "method": "agglomerative_jaccard_no_genre_anchor",
             "params_used": {},
         }),
