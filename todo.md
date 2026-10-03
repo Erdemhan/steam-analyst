@@ -47,3 +47,22 @@ Items recorded for later. None of these are started.
 - The counts from the SteamSpy coarse filter (`acquisition/funnel.py`) do not appear to reach the stored report
   (`_get_initial_rejection_reasons` in `acquisition/pipeline.py` starts all at zero).
 - Verify and merge the funnel's own counts into the stored report.
+
+## 6. Too few recent games in the sample for the opportunity matrix
+
+- On run 20261003T162937824Z-28423c (3000 SteamSpy catalog apps, 713 candidates, 285 simple-subset games) only
+  29 simple-subset games were released within the trailing window `W = 24` months, so at most 3 archetypes can
+  reach the 5-games-in-window floor, each with exactly 5 games.
+- The number of scorable archetypes is limited by the sample, not by the clustering threshold
+  (see FORMULATION §6, frozen threshold paragraph).
+- To investigate:
+  - A larger scan (more SteamSpy catalog pages) and how many recent games it actually adds, since the catalog order
+    may favor older apps.
+  - A data source or query that targets recent releases, within the documented-API constraint of ADR-003.
+  - Whether `W` or the 5-games floor should be revisited (FORMULATION §6 is user-locked, needs approval).
+- Findings on run 20261003T162937824Z-28423c that bear on this item:
+  - SteamSpy `all` is ordered by owners, descending, and the first three pages (3000 apps) end at the 200k-500k owner band.
+  - The SteamSpy bulk payload has no release date, so the 2020+ release filter can only run after `appdetails`;
+    1341 of the 2056 `appdetails` calls were spent on apps released before 2020.
+  - Using the appid as a proxy for release recency does not work: 2025 releases in the sample have a median appid of
+    about 1.48M, and an appid floor of 2.3M would keep only 24% of the games released within `W`.
