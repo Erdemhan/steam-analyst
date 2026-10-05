@@ -342,8 +342,9 @@ def _fetch_and_filter_details(
 
     Returns:
         A dict with:
-        - detail_fetched: count of successful fetches
-        - detail_failed: count of failures
+        - detail_fetched: candidates with a successful appdetails payload, including
+          those fetched by earlier invocations of the same run
+        - detail_failed: candidates without one
         - requests_made: total requests issued
         - candidates_after_date_filter: DataFrame of survivors
         - updated_rejection_reasons: dict with release_date_outside_window count
@@ -408,6 +409,7 @@ def _fetch_and_filter_details(
     # Apply release-date filter
     candidates_with_dates = []
     release_date_rejected = 0
+    successful_details = 0
 
     for appid in candidate_appids:
         if appid not in all_details:
@@ -420,6 +422,7 @@ def _fetch_and_filter_details(
         # Check success
         if not isinstance(appid_data, dict) or appid_data.get("success") is not True:
             continue
+        successful_details += 1
 
         data = appid_data.get("data", {})
 
@@ -466,9 +469,11 @@ def _fetch_and_filter_details(
     )  # Start with all zeros
     updated_rejection_reasons["release_date_outside_window"] = release_date_rejected
 
+    # Totals cover the whole run: appdetails fetched by earlier invocations count too,
+    # so a resumed run is not mistaken for a total acquisition failure.
     return {
-        "detail_fetched": detail_fetched,
-        "detail_failed": detail_failed,
+        "detail_fetched": successful_details,
+        "detail_failed": len(candidate_appids) - successful_details,
         "requests_made": requests_made,
         "candidates_after_date_filter": candidates_after_date_filter,
         "updated_rejection_reasons": updated_rejection_reasons,

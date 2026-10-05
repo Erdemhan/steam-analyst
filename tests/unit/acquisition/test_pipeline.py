@@ -619,6 +619,74 @@ class TestResumeLogic:
             assert report.candidate_count == 2
 
 
+    def test_resume_with_every_appdetails_already_fetched_is_not_a_failure(
+        self, temp_db, run_id, settings, acquisition_config, mock_event_sink
+    ):
+        """A resume that finds all appdetails already stored must not raise."""
+        from steam_analyst.storage import upsert_raw_payloads
+
+        with patch(
+            "steam_analyst.acquisition.pipeline.fetch_steamspy_catalog"
+        ) as mock_steamspy, patch(
+            "steam_analyst.acquisition.pipeline.build_catalog_frame"
+        ) as mock_build_catalog, patch(
+            "steam_analyst.acquisition.pipeline.coarse_filter"
+        ) as mock_coarse, patch(
+            "steam_analyst.acquisition.pipeline.fetch_app_details"
+        ) as mock_details, patch(
+            "steam_analyst.acquisition.pipeline.fetch_review_summaries"
+        ) as mock_reviews, patch(
+            "steam_analyst.acquisition.pipeline.HttpClient"
+        ):
+            stored = []
+            for appid in (1, 2):
+                payload = {
+                    str(appid): {"success": True, "data": {"release_date": "Jan 15, 2020"}}
+                }
+                stored.append(
+                    RawPayload(
+                        appid=appid,
+                        source="steam_appdetails",
+                        fetched_at=datetime.utcnow(),
+                        http_status=200,
+                        payload=payload,
+                        payload_sha256=compute_payload_sha256(payload),
+                    )
+                )
+            upsert_raw_payloads(temp_db, run_id, stored)
+
+            mock_steamspy.return_value = iter([])
+            mock_build_catalog.return_value = pd.DataFrame(
+                {"appid": [1, 2], "positive": [50, 50], "negative": [10, 10]}
+            )
+            mock_coarse.return_value = FunnelResult(
+                candidates=pd.DataFrame({"appid": [1, 2]}),
+                total_input=2,
+                rejected_by_reason={
+                    "duplicate_appid": 0,
+                    "missing_required_field": 0,
+                    "review_count_below_floor": 0,
+                    "review_count_above_ceiling": 0,
+                    "free_to_play_excluded": 0,
+                    "price_above_max": 0,
+                    "publisher_blocklisted": 0,
+                },
+                criteria=acquisition_config.coarse_filter,
+            )
+            mock_details.return_value = iter([])
+            mock_reviews.return_value = iter([])
+
+            report = run_acquisition(
+                temp_db,
+                run_id,
+                acquisition_config,
+                settings,
+                on_event=mock_event_sink,
+            )
+
+            assert report.candidate_count == 2
+
+
 class TestParseReleaseDate:
     """Test the _parse_release_date helper."""
 
