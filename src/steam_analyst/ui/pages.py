@@ -60,6 +60,9 @@ _COLUMN_TR = {
     "Est. Sales (band mid)": "Tahmini satış (orta)",
     "Complexity": "Karmaşıklık",
     "Releases in Window": "Penceredeki çıkışlar",
+    "Singleplayer (share)": "Singleplayer payı",
+    "Multiplayer (share)": "Multiplayer payı",
+    "Co-op (share)": "Co-op payı",
     "Tag": "Etiket",
     "Positive %": "Olumlu oran",
     "Price ($)": "Fiyat ($)",
@@ -119,13 +122,22 @@ _COLUMN_HELP_TR = {
     ),
     "Karmaşıklık": (
         "Medyan karmaşıklık skoru, 0 ile 1 arasındadır (0 çok basit, 1 çok karmaşık). "
-        "Kurulum boyutu, erken erişim süresi, geliştiricinin oyun sayısı, başarım ve "
-        "DLC sayısı, etiketler, platform ve dil sayısından hesaplanır. Emeği değil, "
+        "Kurulum boyutu, RAM gereksinimi, erken erişim süresi, geliştiricinin oyun sayısı, "
+        "başarım ve DLC sayısı, etiketler, platform ve dil sayısından hesaplanır. Emeği değil, "
         "kapsamı yaklaşık olarak gösterir."
     ),
     "Penceredeki çıkışlar": (
         "Arketipte son 48 ayda çıkan oyun sayısı. Rekabet (z) bu sayıdan türetilir."
     ),
+    "Singleplayer payı": (
+        "Arketipteki oyunların kaçında Singleplayer etiketi var (0-1). Kümelemede "
+        "kullanılmaz, yalnızca arketipin neyi kapsadığını gösterir."
+    ),
+    "Multiplayer payı": (
+        "Arketipteki oyunların kaçında Multiplayer etiketi var (0-1). Singleplayer ile "
+        "birlikte yüksek olabilir, çünkü bir oyun ikisini de destekleyebilir."
+    ),
+    "Co-op payı": "Arketipteki oyunların kaçında Co-op etiketi var (0-1).",
     "Etiket": "Steam etiketi. Satırdaki değerler bu etikete sahip oyunlar için hesaplanır.",
     "Olumlu oran": (
         "Olumlu yorumların toplam yorumlara oranı (0 ile 1 arası) medyanı. Oyuncu "
