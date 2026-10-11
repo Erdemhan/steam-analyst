@@ -66,3 +66,29 @@ Items recorded for later. None of these are started.
     1341 of the 2056 `appdetails` calls were spent on apps released before 2020.
   - Using the appid as a proxy for release recency does not work: 2025 releases in the sample have a median appid of
     about 1.48M, and an appid floor of 2.3M would keep only 24% of the games released within `W`.
+
+## 7. Threshold search criterion degenerates as the sample grows
+
+- The pre-freeze search picks the smallest merge distance that maximizes the number of clusters with at least
+  `min_cluster_size` games released within `W` (FORMULATION §6 amendment of 2026-10-03). It prefers finer partitions
+  whenever more data is available.
+- Observed on run 20261003T204134704Z-d8d2b3 (3002 enriched games, 1201 in the simple subset): the search gives
+  0.32 for W = 48 (381 tag clusters) and 0.0 for W = 60, while the frozen 0.9367 yields 18 well-sized archetypes.
+- Replace or bound the criterion (for example a cap on the number of tag clusters or a minimum within-cluster
+  cohesion), then decide whether to re-freeze. Needs user approval since FORMULATION §6 is locked.
+
+## 8. Request budget does not scale with the scan size
+
+- `acquisition.request_budget = 10000` is counted per invocation of `run_acquisition`, and a 10-page scan needs
+  about 14000 requests (7827 appdetails + 3004 review summaries + 3004 SteamSpy details). Run
+  20261003T204134704Z-d8d2b3 stopped with `RequestBudgetExceeded` and had to be resumed.
+- A resume starts a fresh counter, so the cap does not bound the total spent by a run.
+- Derive the budget from the planned scan size (or from `max_catalog_pages`) and track the total per run.
+- Resume bug found on the same run and fixed in commit 8a551b4: totals now cover earlier invocations. The stored
+  `funnel_report` of run 20261003T162937824Z-28423c still carries the old undercount (1555 instead of 2055 fetched).
+
+## 9. Software-like archetype among games
+
+- The opportunity matrix of run 20261003T204134704Z-d8d2b3 contains "Utilities / Software / Design & Illustration"
+  (5 games). All rows have `app_type = game`, so the coarse filter cannot separate such titles.
+- Check whether Steam's `type` or the genre/category fields can exclude non-game software without scraping.
