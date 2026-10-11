@@ -8,6 +8,9 @@ from typing import Callable
 
 from .errors import RequestBudgetExceeded
 
+DEFAULT_MAX_INTERVAL_SECONDS = 60.0
+DEFAULT_RECOVERY_SUCCESSES = 20
+
 
 class RateLimiter:
     """Token bucket rate limiter with per-run request budget and Retry-After support.
@@ -15,7 +18,9 @@ class RateLimiter:
     Blocks acquire() calls to respect a configured minimum interval between requests
     and raises RequestBudgetExceeded when the per-run budget is exhausted. Honors
     HTTP 429 Retry-After headers and widens the base interval after repeated 429s
-    to gracefully degrade under rate-limiting pressure.
+    to gracefully degrade under rate-limiting pressure. The widened interval never
+    exceeds max_interval_seconds and shrinks back toward the configured interval
+    after recovery_successes consecutive non-429 responses.
 
     Thread-safe via internal locking.
     """
@@ -27,6 +32,8 @@ class RateLimiter:
         time_fn: Callable[[], float] | None = None,
         sleep_fn: Callable[[float], None] | None = None,
         cancel_token: threading.Event | None = None,
+        max_interval_seconds: float = DEFAULT_MAX_INTERVAL_SECONDS,
+        recovery_successes: int = DEFAULT_RECOVERY_SUCCESSES,
     ):
         """Initialize a rate limiter.
 
@@ -48,11 +55,17 @@ class RateLimiter:
                 an exception or returns early so no token is consumed. The caller
                 (which has access to orchestration) is responsible for translating
                 this to PipelineCancelled.
+            max_interval_seconds: Ceiling for the interval after 429 widening. A
+                value below interval_seconds is raised to interval_seconds.
+            recovery_successes: Number of consecutive non-429 responses after which
+                a widened interval is halved, down to interval_seconds.
         """
         if interval_seconds <= 0:
             raise ValueError(f"interval_seconds must be positive, got {interval_seconds}")
         if request_budget <= 0:
             raise ValueError(f"request_budget must be positive, got {request_budget}")
+        if recovery_successes <= 0:
+            raise ValueError(f"recovery_successes must be positive, got {recovery_successes}")
 
         self._interval_seconds = interval_seconds
         self._base_interval_seconds = interval_seconds
@@ -67,6 +80,9 @@ class RateLimiter:
         self._has_seen_429 = False
         self._lock = threading.Lock()
         self._widening_factor = 2.0
+        self._max_interval_seconds = max(max_interval_seconds, interval_seconds)
+        self._recovery_successes = recovery_successes
+        self._consecutive_non_429 = 0
 
     def acquire(self) -> None:
         """Acquire permission to make one HTTP request.
@@ -139,16 +155,15 @@ class RateLimiter:
         """Update limiter state from a response.
 
         On HTTP 429 with a parseable Retry-After header, the next acquire() call
-        waits at least that many seconds. Additionally, observing a second 429
-        within the same run widens the limiter's base interval for the remainder
-        of the run (interval widening is monotonic and persists across successful
-        responses).
+        waits at least that many seconds. Each further 429 doubles the interval, up
+        to max_interval_seconds. After recovery_successes consecutive non-429
+        responses the interval is halved again, down to the configured one.
 
         On 5xx status codes, observe_response does not perform widening (HttpClient's
         own backoff handles 5xx retries at the request level); it only tracks 429s
         for interval widening.
 
-        On 2xx/3xx/4xx-other, no state change occurs beyond bookkeeping.
+        On 2xx/3xx/4xx-other, the response counts toward interval recovery.
 
         Args:
             status_code: The HTTP status code received.
@@ -171,10 +186,25 @@ class RateLimiter:
                             delta_seconds = max(0.0, retry_after_timestamp - now_wall)
                             self._retry_after_until = self._time_fn() + delta_seconds
 
+                self._consecutive_non_429 = 0
                 if self._has_seen_429:
-                    self._interval_seconds *= self._widening_factor
+                    self._interval_seconds = min(
+                        self._interval_seconds * self._widening_factor,
+                        self._max_interval_seconds,
+                    )
                 else:
                     self._has_seen_429 = True
+            elif status_code < 500:
+                self._consecutive_non_429 += 1
+                if (
+                    self._consecutive_non_429 >= self._recovery_successes
+                    and self._interval_seconds > self._base_interval_seconds
+                ):
+                    self._interval_seconds = max(
+                        self._base_interval_seconds,
+                        self._interval_seconds / self._widening_factor,
+                    )
+                    self._consecutive_non_429 = 0
 
     @staticmethod
     def _get_header_value(headers: Mapping[str, str], key: str) -> str | None:

@@ -629,3 +629,82 @@ class TestRateLimiterEdgeCases:
         limiter.acquire()
 
         assert sleep.total_slept == 1.0
+
+
+class TestIntervalCapAndRecovery:
+    """The widened interval is capped and shrinks back after successes."""
+
+    def _limiter(self, **kwargs):
+        clock = FakeClock()
+        sleep = FakeSleep(clock)
+        return RateLimiter(
+            interval_seconds=1.0,
+            request_budget=1000,
+            time_fn=clock,
+            sleep_fn=sleep,
+            **kwargs,
+        )
+
+    def test_widening_stops_at_the_ceiling(self):
+        limiter = self._limiter(max_interval_seconds=8.0)
+        for _ in range(20):
+            limiter.observe_response(429, {})
+        assert limiter._interval_seconds == 8.0
+
+    def test_default_ceiling_is_sixty_seconds(self):
+        limiter = self._limiter()
+        for _ in range(30):
+            limiter.observe_response(429, {})
+        assert limiter._interval_seconds == 60.0
+
+    def test_ceiling_below_base_interval_is_raised_to_it(self):
+        limiter = self._limiter(max_interval_seconds=0.5)
+        for _ in range(5):
+            limiter.observe_response(429, {})
+        assert limiter._interval_seconds == 1.0
+
+    def test_consecutive_successes_halve_the_interval(self):
+        limiter = self._limiter(max_interval_seconds=8.0, recovery_successes=3)
+        for _ in range(5):
+            limiter.observe_response(429, {})
+        assert limiter._interval_seconds == 8.0
+
+        for _ in range(3):
+            limiter.observe_response(200, {})
+        assert limiter._interval_seconds == 4.0
+
+        for _ in range(6):
+            limiter.observe_response(200, {})
+        assert limiter._interval_seconds == 1.0
+
+    def test_recovery_never_goes_below_the_configured_interval(self):
+        limiter = self._limiter(recovery_successes=2)
+        limiter.observe_response(429, {})
+        limiter.observe_response(429, {})
+        for _ in range(40):
+            limiter.observe_response(200, {})
+        assert limiter._interval_seconds == 1.0
+
+    def test_a_429_resets_the_success_streak(self):
+        limiter = self._limiter(max_interval_seconds=8.0, recovery_successes=3)
+        for _ in range(4):
+            limiter.observe_response(429, {})
+        widened = limiter._interval_seconds
+        limiter.observe_response(200, {})
+        limiter.observe_response(200, {})
+        limiter.observe_response(429, {})
+        limiter.observe_response(200, {})
+        limiter.observe_response(200, {})
+        assert limiter._interval_seconds >= widened
+
+    def test_server_errors_do_not_count_toward_recovery(self):
+        limiter = self._limiter(recovery_successes=2)
+        limiter.observe_response(429, {})
+        limiter.observe_response(429, {})
+        for _ in range(10):
+            limiter.observe_response(503, {})
+        assert limiter._interval_seconds == 2.0
+
+    def test_invalid_recovery_successes_is_rejected(self):
+        with pytest.raises(ValueError):
+            self._limiter(recovery_successes=0)

@@ -2,7 +2,7 @@
 
 Items recorded for later. None of these are started.
 
-## 1. Make the complexity weights user-adjustable
+## 1. Make the complexity weights user-adjustable (done, commit 20ea092)
 
 - Allow the complexity score weights (FORMULATION §4, `enrichment.complexity_weights.*`) to be overridden by the user at run time.
 - When the user does not override them, the frozen defaults from `config/parameters.toml` must be used unchanged.
@@ -12,7 +12,7 @@ Items recorded for later. None of these are started.
   - Whether the overridden weights are stored with the run so that results remain reproducible.
   - FORMULATION.md is user-locked, so the defaults stay there and overrides must not modify it.
 
-## 2. Archetype labels are ambiguous
+## 2. Archetype labels are ambiguous (mostly done, commit 2a8d954)
 
 - Observed on a 1000-game scan: an archetype reported as "Action, Multiplayer, Singleplayer" is unclear.
   It is not evident whether it means single-player only, multiplayer only, or games that support both.
@@ -24,14 +24,18 @@ Items recorded for later. None of these are started.
     in the distance measure and in the displayed label.
   - Whether the label should state explicitly how many member games carry each tag (for example, share of members per tag).
 - Any change to tag distance or clustering affects FORMULATION §6 and needs user approval.
+- Status: generic tags are excluded from clustering and each archetype reports its Singleplayer/Multiplayer/Co-op share.
+  Remaining and optional: labels still use the three tags with the highest total co-occurrence, with no per-tag coverage shown.
 
-## 3. Cap the rate limiter's 429 widening
+## 3. Cap the rate limiter's 429 widening (done)
 
 - `RateLimiter.observe_response` doubles the request interval on every 429 after the first, with no upper bound
   (`src/steam_analyst/acquisition/rate_limiter.py`).
 - Observed on run 20261003T162937824Z-28423c: after six 429 responses the interval grew to tens of seconds and the
   run effectively stalled. It was resumed after lowering `steam_requests_per_minute` from 60 to 30.
 - Add a ceiling on the widened interval and a cool-down/recovery rule, then re-check the 30 requests/minute default.
+- Status: the widened interval is capped at 60 s and halves after 20 consecutive non-429 responses.
+  The 30 requests/minute default produced no 429 over about 10000 requests, so it stays.
 
 ## 4. Freeze script must not write locked values without confirmation
 
@@ -48,7 +52,7 @@ Items recorded for later. None of these are started.
   (`_get_initial_rejection_reasons` in `acquisition/pipeline.py` starts all at zero).
 - Verify and merge the funnel's own counts into the stored report.
 
-## 6. Too few recent games in the sample for the opportunity matrix
+## 6. Too few recent games in the sample for the opportunity matrix (partly addressed)
 
 - On run 20261003T162937824Z-28423c (3000 SteamSpy catalog apps, 713 candidates, 285 simple-subset games) only
   29 simple-subset games were released within the trailing window `W = 24` months, so at most 3 archetypes can
@@ -60,6 +64,8 @@ Items recorded for later. None of these are started.
     may favor older apps.
   - A data source or query that targets recent releases, within the documented-API constraint of ADR-003.
   - Whether `W` or the 5-games floor should be revisited (FORMULATION §6 is user-locked, needs approval).
+- Status: W was widened to 48 months and a 10-page scan was run; 18 archetypes are scored on run 20261003T204134704Z-d8d2b3.
+  No alternative recency source within ADR-003 was found.
 - Findings on run 20261003T162937824Z-28423c that bear on this item:
   - SteamSpy `all` is ordered by owners, descending, and the first three pages (3000 apps) end at the 200k-500k owner band.
   - The SteamSpy bulk payload has no release date, so the 2020+ release filter can only run after `appdetails`;
