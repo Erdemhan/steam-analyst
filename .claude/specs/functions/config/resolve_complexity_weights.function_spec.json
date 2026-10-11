@@ -1,0 +1,53 @@
+{
+  "module": "config",
+  "function_name": "resolve_complexity_weights",
+  "file_path": "src/steam_analyst/config/parameters.py",
+  "description": "Merges per-run complexity weights over the locked defaults and rescales them to sum to 1.0.",
+  "signature": "def resolve_complexity_weights(defaults: Mapping[str, float], override: Mapping[str, float] | None) -> dict[str, float]",
+  "docstring": "Merge user-chosen complexity weights over the locked defaults.\n\nFeatures missing from `override` keep their default, then the whole vector is rescaled to sum to 1.0. When the result equals the defaults, the defaults are returned unchanged.\n\nRaises:\n    ParameterError: unknown feature, non-number, negative or non-finite value, or all weights zero.\n",
+  "preconditions": [
+    "defaults is the locked weight mapping and sums to 1.0"
+  ],
+  "postconditions": [
+    "Returned weights have exactly the keys of defaults and sum to 1.0",
+    "Inputs are not mutated"
+  ],
+  "edge_cases": [
+    {
+      "input": "override is None or {}",
+      "expected_behavior": "defaults returned"
+    },
+    {
+      "input": "override values equal defaults",
+      "expected_behavior": "defaults returned (no effective override)"
+    },
+    {
+      "input": "every weight zero",
+      "expected_behavior": "ParameterError"
+    },
+    {
+      "input": "NaN, inf, negative or non-number value",
+      "expected_behavior": "ParameterError"
+    },
+    {
+      "input": "unknown feature key",
+      "expected_behavior": "ParameterError"
+    }
+  ],
+  "unit_tests": [
+    {
+      "name": "test_unspecified_features_keep_default_then_rescale_to_one",
+      "expected": "size_bytes 0.4 gives 0.4/1.2"
+    },
+    {
+      "name": "test_all_zero_is_rejected",
+      "expected": "ParameterError"
+    },
+    {
+      "name": "test_unknown_feature_is_rejected",
+      "expected": "ParameterError"
+    }
+  ],
+  "dependencies": [],
+  "open_questions": []
+}

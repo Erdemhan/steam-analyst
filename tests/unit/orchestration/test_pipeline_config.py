@@ -37,6 +37,7 @@ class TestPipelineConfigToDict:
             "start_stage": "acquisition",
             "max_catalog_pages": None,
             "request_budget_override": None,
+            "complexity_weights_override": None,
             "notes": None,
         }
 
@@ -54,6 +55,7 @@ class TestPipelineConfigToDict:
             "start_stage": "enrichment",
             "max_catalog_pages": 5,
             "request_budget_override": 1000,
+            "complexity_weights_override": None,
             "notes": "smoke test",
         }
 
@@ -121,6 +123,7 @@ class TestPipelineConfigFromDict:
             "start_stage": "analysis",
             "max_catalog_pages": 10,
             "request_budget_override": 2000,
+            "complexity_weights_override": None,
             "notes": "test run",
         }
         config = PipelineConfig.from_dict(data)
@@ -264,6 +267,7 @@ class TestPipelineConfigEdgeCases:
             "start_stage": "acquisition",
             "max_catalog_pages": None,
             "request_budget_override": None,
+            "complexity_weights_override": None,
             "notes": None,
         }
         config = PipelineConfig.from_dict(data)
@@ -279,6 +283,7 @@ class TestPipelineConfigEdgeCases:
                 "start_stage": "acquisition",
                 "max_catalog_pages": None,
                 "request_budget_override": None,
+                "complexity_weights_override": None,
                 "notes": None,
             }
         )
@@ -301,6 +306,7 @@ class TestPipelineConfigEdgeCases:
             "start_stage",
             "max_catalog_pages",
             "request_budget_override",
+            "complexity_weights_override",
             "notes",
         }
         assert set(result.keys()) == expected_keys
@@ -340,3 +346,18 @@ class TestPipelineConfigEquality:
         # Can be used in a set
         config_set = {config}
         assert config in config_set
+
+
+class TestComplexityWeightsOverrideField:
+    """The complexity_weights_override field round-trips through config_json."""
+
+    def test_default_is_none(self):
+        assert PipelineConfig().complexity_weights_override is None
+
+    def test_round_trip(self):
+        config = PipelineConfig(complexity_weights_override={"size_bytes": 0.4})
+        restored = PipelineConfig.from_dict(config.to_dict())
+        assert restored.complexity_weights_override == {"size_bytes": 0.4}
+
+    def test_older_config_without_the_key_loads_as_none(self):
+        assert PipelineConfig.from_dict({"max_catalog_pages": 2}).complexity_weights_override is None

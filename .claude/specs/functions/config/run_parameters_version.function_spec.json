@@ -1,0 +1,32 @@
+{
+  "module": "config",
+  "function_name": "run_parameters_version",
+  "file_path": "src/steam_analyst/config/parameters.py",
+  "description": "Computes a run's parameters_version from the file hash and its optional weights override.",
+  "signature": "def run_parameters_version(path: Path, weights_override: Mapping[str, float] | None) -> str",
+  "docstring": "Return parameters_version(path) when there is no override, otherwise load the locked weights, resolve the override and return effective_parameters_version.\n\nRaises:\n    ParameterError: unreadable file or invalid override.\n",
+  "preconditions": [
+    "path points to config/parameters.toml"
+  ],
+  "postconditions": [
+    "Equals parameters_version(path) when weights_override is None or empty"
+  ],
+  "edge_cases": [
+    {
+      "input": "override equal to the defaults",
+      "expected_behavior": "parameters_version(path)"
+    }
+  ],
+  "unit_tests": [
+    {
+      "name": "test_no_override_equals_file_hash",
+      "expected": "equal"
+    },
+    {
+      "name": "test_override_against_real_parameters_changes_version",
+      "expected": "different"
+    }
+  ],
+  "dependencies": [],
+  "open_questions": []
+}

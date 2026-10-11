@@ -303,6 +303,22 @@ def load_run_report(conn: sqlite3.Connection, run_id: str) -> RunReport:
     caveats = interpretive_caveats()
     if is_partial:
         caveats.append(partial_run_caveat(missing_stages, run_record))
+    weights_override = (run_record.config or {}).get("complexity_weights_override")
+    if weights_override:
+        chosen = ", ".join(f"{k} = {v:g}" for k, v in sorted(weights_override.items()))
+        caveats.append(
+            Caveat(
+                key="custom_complexity_weights",
+                title="Custom complexity weights",
+                body=(
+                    "This run replaced some locked complexity weights (FORMULATION.md "
+                    f"section 4) with: {chosen}. The remaining weights kept their defaults "
+                    "and all ten were rescaled to sum to 1. The simple subset, and so every "
+                    "archetype result, is not comparable with runs that use the defaults."
+                ),
+                severity="warning",
+            )
+        )
     if selection.archetype_cap_relaxed:
         caveats.append(
             Caveat(

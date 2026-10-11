@@ -1,0 +1,32 @@
+{
+  "module": "ui",
+  "function_name": "weights_override_from_inputs",
+  "file_path": "src/steam_analyst/ui/pages.py",
+  "description": "Reduces the form's ten weight inputs to the weights the user actually changed.",
+  "signature": "def weights_override_from_inputs(inputs: Mapping[str, float], defaults: Mapping[str, float]) -> dict[str, float] | None",
+  "docstring": "Return only the inputs that differ from the locked defaults (tolerance 1e-9), or None when none differ.\n",
+  "preconditions": [
+    "inputs and defaults share the same keys"
+  ],
+  "postconditions": [
+    "None when nothing changed"
+  ],
+  "edge_cases": [
+    {
+      "input": "float noise below 1e-9",
+      "expected_behavior": "not a change"
+    }
+  ],
+  "unit_tests": [
+    {
+      "name": "test_returns_only_changed_weights",
+      "expected": "{'ram_bytes': 0.30}"
+    },
+    {
+      "name": "test_float_noise_is_not_a_change",
+      "expected": "None"
+    }
+  ],
+  "dependencies": [],
+  "open_questions": []
+}

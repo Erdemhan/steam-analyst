@@ -15,9 +15,10 @@ Key principles:
 - Every surface showing a revenue or complexity figure also renders the caveat panel.
 """
 
+import math
 import sqlite3
 from pathlib import Path
-from typing import Sequence
+from typing import Mapping, Sequence
 
 import pandas as pd
 import streamlit as st
@@ -313,6 +314,40 @@ def render_caveat_panel(caveats: Sequence[reporting.Caveat]) -> None:
                 st.write(body)
 
 
+_WEIGHT_LABELS = {
+    "size_bytes": "Kurulum boyutu",
+    "ram_bytes": "RAM gereksinimi",
+    "early_access_days": "Erken erişim süresi",
+    "dev_title_count": "Geliştiricinin oyun sayısı",
+    "simplicity_tag_score": "Basitlik etiketleri",
+    "complexity_tag_score": "Karmaşıklık etiketleri",
+    "achievement_count": "Başarım sayısı",
+    "dlc_count": "DLC sayısı",
+    "platform_count": "Platform sayısı",
+    "language_count": "Dil sayısı",
+}
+
+
+def weights_override_from_inputs(
+    inputs: Mapping[str, float], defaults: Mapping[str, float]
+) -> dict[str, float] | None:
+    """Keep only the weights the user changed from the locked defaults.
+
+    Args:
+        inputs: Weight entered per feature in the form.
+        defaults: The locked default weights.
+
+    Returns:
+        The changed weights as a dict, or None when every input equals its default.
+    """
+    changed = {
+        feature: float(value)
+        for feature, value in inputs.items()
+        if not math.isclose(value, defaults[feature], abs_tol=1e-9)
+    }
+    return changed or None
+
+
 def render_new_analysis_page(conn: sqlite3.Connection, settings: Settings) -> None:
     """Render the run-trigger page.
 
@@ -343,7 +378,8 @@ def render_new_analysis_page(conn: sqlite3.Connection, settings: Settings) -> No
     st.info(
         f"**Parametre sürümü:** {current_version}\n\n"
         "Formül sabitleri FORMULATION.md dosyasında kilitlidir ve bu arayüzden "
-        "değiştirilemez. Aşağıda yalnızca bu analize özel ayarlar var."
+        "değiştirilemez. Aşağıda yalnızca bu analize özel ayarlar var. Karmaşıklık "
+        "ağırlıkları için kilitli varsayılanları bu analize özel geçersiz kılabilirsiniz."
     )
 
     # Check if a run is already active
@@ -379,6 +415,31 @@ def render_new_analysis_page(conn: sqlite3.Connection, settings: Settings) -> No
                 "işlenir. İlk tam taramada varsayılanı değiştirmemeniz önerilir."
             ),
         )
+        from steam_analyst.config.parameters import load_parameters
+
+        default_weights = load_parameters(settings.parameters_path)[1].complexity_weights
+        with st.expander("Gelişmiş: karmaşıklık ağırlıkları (isteğe bağlı)"):
+            st.caption(
+                "Karmaşıklık skoru bu ağırlıklarla hesaplanır ve basit oyun alt kümesini "
+                "belirler. Varsayılanlar kilitlidir ve olduğu gibi kalır. Değiştirmediğiniz "
+                "ağırlıklar varsayılanda kalır, sonra on ağırlığın toplamı 1'e ölçeklenir. "
+                "Hiçbirine dokunmazsanız varsayılanlar kullanılır. Özel ağırlıkla yapılan "
+                "bir analiz, varsayılanlarla yapılanlarla karşılaştırılamaz ve sonuç "
+                "sayfasında uyarıyla işaretlenir."
+            )
+            weight_columns = st.columns(2)
+            weight_inputs = {
+                feature: weight_columns[index % 2].number_input(
+                    _WEIGHT_LABELS.get(feature, feature),
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=float(default),
+                    step=0.01,
+                    format="%.2f",
+                    key=f"weight_{feature}",
+                )
+                for index, (feature, default) in enumerate(default_weights.items())
+            }
         notes = st.text_area(
             "Not (isteğe bağlı)",
             value="",
@@ -404,8 +465,17 @@ def render_new_analysis_page(conn: sqlite3.Connection, settings: Settings) -> No
 
         if submitted and can_start:
             try:
+                from steam_analyst.config.parameters import resolve_complexity_weights
+
+                weights_override = weights_override_from_inputs(
+                    weight_inputs, default_weights
+                )
+                effective_weights = resolve_complexity_weights(
+                    default_weights, weights_override
+                )
                 # Build config from form values
                 config = orchestration.PipelineConfig(
+                    complexity_weights_override=weights_override,
                     max_catalog_pages=max_catalog_pages if max_catalog_pages else None,
                     request_budget_override=request_budget_override
                     if request_budget_override
@@ -425,6 +495,14 @@ def render_new_analysis_page(conn: sqlite3.Connection, settings: Settings) -> No
                 st.session_state["event_log"] = []
 
                 st.success(f"Analiz başlatıldı: {run_id}")
+                if weights_override:
+                    st.warning(
+                        "Özel karmaşıklık ağırlıkları kullanılıyor (toplam 1'e ölçeklendi): "
+                        + ", ".join(
+                            f"{_WEIGHT_LABELS.get(f, f)} {w:.3f}"
+                            for f, w in effective_weights.items()
+                        )
+                    )
             except Exception as e:
                 st.error(f"Analiz başlatılamadı: {e}")
 

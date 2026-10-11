@@ -2,8 +2,11 @@
 
 from steam_analyst.config.parameters import (
     ParameterError,
+    effective_parameters_version,
     load_parameters,
     parameters_version,
+    resolve_complexity_weights,
+    run_parameters_version,
     validate_parameters,
 )
 from steam_analyst.config.settings import (
@@ -25,5 +28,8 @@ __all__ = [
     "ParameterError",
     "load_parameters",
     "parameters_version",
+    "effective_parameters_version",
+    "resolve_complexity_weights",
+    "run_parameters_version",
     "validate_parameters",
 ]

@@ -4,10 +4,13 @@ Loads, validates and exposes all tunable parameters from config/parameters.toml
 as typed dataclass instances. Provides stable content hashing for traceability.
 """
 
+from collections.abc import Mapping
 from datetime import date
 from pathlib import Path
 from typing import Any
 import hashlib
+import json
+import math
 import sys
 
 # Use tomllib for Python 3.11+, tomli for earlier versions
@@ -317,6 +320,107 @@ def parameters_version(path: Path) -> str:
     # Compute sha256 hash and return first 12 hex characters
     full_hash = hashlib.sha256(content).hexdigest()
     return full_hash[:12]
+
+
+def resolve_complexity_weights(
+    defaults: Mapping[str, float], override: Mapping[str, float] | None
+) -> dict[str, float]:
+    """Merge user-chosen complexity weights over the locked defaults.
+
+    Features missing from `override` keep their default weight, then the whole
+    vector is rescaled to sum to 1.0 (FORMULATION.md section 4). When the
+    rescaled result equals the defaults, the defaults are returned unchanged.
+
+    Args:
+        defaults: The locked weights from config/parameters.toml, summing to 1.0.
+        override: Weights chosen for one run, a subset of `defaults`' keys. None
+            or an empty mapping means "use the defaults".
+
+    Returns:
+        The effective weights, one per key of `defaults`, summing to 1.0.
+
+    Raises:
+        ParameterError: If `override` names an unknown feature, or holds a
+            non-finite or negative value, or the merged weights sum to zero.
+    """
+    if not override:
+        return dict(defaults)
+
+    unknown = sorted(set(override) - set(defaults))
+    if unknown:
+        raise ParameterError(f"unknown complexity weight(s): {', '.join(unknown)}")
+
+    merged = dict(defaults)
+    for feature, value in override.items():
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ParameterError(f"complexity weight {feature} must be a number, got {value!r}")
+        if not math.isfinite(value) or value < 0:
+            raise ParameterError(
+                f"complexity weight {feature} must be finite and >= 0, got {value}"
+            )
+        merged[feature] = float(value)
+
+    total = sum(merged.values())
+    if total <= 0:
+        raise ParameterError("complexity weights must not all be zero")
+
+    effective = {feature: value / total for feature, value in merged.items()}
+    if all(math.isclose(effective[f], defaults[f], abs_tol=1e-12) for f in defaults):
+        return dict(defaults)
+    return effective
+
+
+def effective_parameters_version(
+    base_version: str,
+    defaults: Mapping[str, float],
+    effective_weights: Mapping[str, float],
+) -> str:
+    """Parameter version of a run, accounting for overridden complexity weights.
+
+    Args:
+        base_version: parameters_version(path) of config/parameters.toml.
+        defaults: The locked complexity weights.
+        effective_weights: Weights used by the run (see resolve_complexity_weights).
+
+    Returns:
+        `base_version` unchanged when the weights equal the defaults, otherwise a
+        12-character hash of the base version and the weights rounded to 12 places.
+    """
+    if all(
+        math.isclose(effective_weights[f], defaults[f], abs_tol=1e-12) for f in defaults
+    ):
+        return base_version
+    canonical = json.dumps(
+        {f: round(effective_weights[f], 12) for f in sorted(effective_weights)},
+        sort_keys=True,
+    )
+    return hashlib.sha256(f"{base_version}|{canonical}".encode("utf-8")).hexdigest()[:12]
+
+
+def run_parameters_version(
+    path: Path, weights_override: Mapping[str, float] | None
+) -> str:
+    """parameters_version of a run started with an optional weights override.
+
+    Args:
+        path: Absolute path to config/parameters.toml.
+        weights_override: The run's complexity_weights_override, or None.
+
+    Returns:
+        parameters_version(path) when there is no effective override, otherwise
+        the value from effective_parameters_version.
+
+    Raises:
+        ParameterError: If the file is unreadable or the override is invalid.
+    """
+    base_version = parameters_version(path)
+    if not weights_override:
+        return base_version
+    _, enrichment_params, _ = load_parameters(path)
+    defaults = enrichment_params.complexity_weights
+    return effective_parameters_version(
+        base_version, defaults, resolve_complexity_weights(defaults, weights_override)
+    )
 
 
 def load_parameters(path: Path) -> tuple:

@@ -1,0 +1,33 @@
+{
+  "module": "config",
+  "function_name": "effective_parameters_version",
+  "file_path": "src/steam_analyst/config/parameters.py",
+  "description": "Parameter version of a run after an optional complexity-weights override.",
+  "signature": "def effective_parameters_version(base_version: str, defaults: Mapping[str, float], effective_weights: Mapping[str, float]) -> str",
+  "docstring": "Return base_version unchanged when the weights equal the defaults, otherwise a 12-character sha256 of base_version and the weights rounded to 12 places (sorted keys), so a run with custom weights never shares a version with a default run.\n",
+  "preconditions": [
+    "effective_weights has the same keys as defaults"
+  ],
+  "postconditions": [
+    "Deterministic for equal inputs",
+    "Different weights give different versions"
+  ],
+  "edge_cases": [
+    {
+      "input": "effective_weights == defaults",
+      "expected_behavior": "base_version"
+    }
+  ],
+  "unit_tests": [
+    {
+      "name": "test_defaults_keep_base_version",
+      "expected": "abc123"
+    },
+    {
+      "name": "test_override_changes_version_deterministically",
+      "expected": "stable 12-char value != base"
+    }
+  ],
+  "dependencies": [],
+  "open_questions": []
+}

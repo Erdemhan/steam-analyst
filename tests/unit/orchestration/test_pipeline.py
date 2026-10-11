@@ -303,7 +303,7 @@ class TestRunPipeline:
             mock_ana.return_value = ana_report
             mock_load_params.return_value = (
                 MagicMock(spec=AcquisitionConfig),
-                MagicMock(spec=EnrichmentParams),
+                MagicMock(spec=EnrichmentParams, complexity_weights={"a": 1.0}),
                 MagicMock(spec=AnalysisParams),
             )
             mock_params_ver.return_value = "abc123def456"
@@ -342,7 +342,7 @@ class TestRunPipeline:
             mock_ana.return_value = ana_report
             mock_load_params.return_value = (
                 MagicMock(spec=AcquisitionConfig),
-                MagicMock(spec=EnrichmentParams),
+                MagicMock(spec=EnrichmentParams, complexity_weights={"a": 1.0}),
                 MagicMock(spec=AnalysisParams),
             )
             mock_params_ver.return_value = "abc123def456"
@@ -373,7 +373,7 @@ class TestRunPipeline:
 
             mock_load_params.return_value = (
                 MagicMock(spec=AcquisitionConfig),
-                MagicMock(spec=EnrichmentParams),
+                MagicMock(spec=EnrichmentParams, complexity_weights={"a": 1.0}),
                 MagicMock(spec=AnalysisParams),
             )
             mock_params_ver.return_value = "abc123def456"
@@ -432,7 +432,7 @@ class TestRunPipeline:
             mock_acq.side_effect = AcquisitionError("fetch failed")
             mock_load_params.return_value = (
                 MagicMock(spec=AcquisitionConfig),
-                MagicMock(spec=EnrichmentParams),
+                MagicMock(spec=EnrichmentParams, complexity_weights={"a": 1.0}),
                 MagicMock(spec=AnalysisParams),
             )
             mock_params_ver.return_value = "abc123def456"
@@ -465,7 +465,7 @@ class TestRunPipeline:
             mock_acq.side_effect = KeyboardInterrupt()
             mock_load_params.return_value = (
                 MagicMock(spec=AcquisitionConfig),
-                MagicMock(spec=EnrichmentParams),
+                MagicMock(spec=EnrichmentParams, complexity_weights={"a": 1.0}),
                 MagicMock(spec=AnalysisParams),
             )
             mock_params_ver.return_value = "abc123def456"
@@ -500,7 +500,7 @@ class TestRunPipeline:
             mock_ana.return_value = ana_report
             mock_load_params.return_value = (
                 MagicMock(spec=AcquisitionConfig),
-                MagicMock(spec=EnrichmentParams),
+                MagicMock(spec=EnrichmentParams, complexity_weights={"a": 1.0}),
                 MagicMock(spec=AnalysisParams),
             )
             mock_params_ver.return_value = "abc123def456"
@@ -514,3 +514,89 @@ class TestRunPipeline:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestComplexityWeightsOverrideInPipeline:
+    """run_pipeline applies a run's complexity weights override to enrichment."""
+
+    @staticmethod
+    def _real_parameters():
+        from pathlib import Path
+
+        from steam_analyst.config.parameters import load_parameters
+
+        path = Path(__file__).resolve().parents[3] / "config" / "parameters.toml"
+        return load_parameters(path)
+
+    def _run(self, conn, settings, run_id, config):
+        with patch("steam_analyst.orchestration.pipeline.run_acquisition") as mock_acq, \
+             patch("steam_analyst.orchestration.pipeline.run_enrichment") as mock_enr, \
+             patch("steam_analyst.orchestration.pipeline.run_analysis") as mock_ana, \
+             patch("steam_analyst.orchestration.pipeline.load_parameters") as mock_load_params, \
+             patch("steam_analyst.orchestration.pipeline.parameters_version") as mock_params_ver, \
+             patch("scripts.verify_parameters_consistency.verify_parameters_consistency"):
+            mock_acq.return_value = _make_acq_report(run_id)
+            mock_enr.return_value = _make_enr_report(run_id)
+            mock_ana.return_value = _make_ana_report(run_id)
+            mock_load_params.return_value = self._real_parameters()
+            mock_params_ver.return_value = "abc123def456"
+            result = run_pipeline(conn, run_id, config, settings=settings)
+            return result, mock_enr, mock_ana
+
+    def test_no_override_passes_locked_weights_and_base_version(
+        self, conn_for_test: sqlite3.Connection, settings: Settings
+    ):
+        config = PipelineConfig()
+        run_id = _create_test_run(conn_for_test, "test-weights-001", config)
+
+        result, mock_enr, mock_ana = self._run(conn_for_test, settings, run_id, config)
+
+        locked = self._real_parameters()[1].complexity_weights
+        assert result.status == "succeeded"
+        assert mock_enr.call_args.args[2].complexity_weights == locked
+        assert mock_enr.call_args.kwargs["parameters_version"] == "abc123def456"
+
+    def test_override_reaches_enrichment_and_changes_version(
+        self, conn_for_test: sqlite3.Connection, settings: Settings
+    ):
+        config = PipelineConfig(complexity_weights_override={"size_bytes": 0.5})
+        run_id = _create_test_run(conn_for_test, "test-weights-002", config)
+
+        result, mock_enr, mock_ana = self._run(conn_for_test, settings, run_id, config)
+
+        used = mock_enr.call_args.args[2].complexity_weights
+        assert result.status == "succeeded"
+        assert abs(sum(used.values()) - 1.0) < 1e-9
+        assert used["size_bytes"] > self._real_parameters()[1].complexity_weights["size_bytes"]
+        version = mock_enr.call_args.kwargs["parameters_version"]
+        assert version != "abc123def456"
+        assert mock_ana.call_args.kwargs["parameters_version"] == version
+
+    def test_override_is_logged_as_a_warning_event(
+        self, conn_for_test: sqlite3.Connection, settings: Settings
+    ):
+        from steam_analyst.storage import read_run_events
+
+        config = PipelineConfig(complexity_weights_override={"ram_bytes": 0.3})
+        run_id = _create_test_run(conn_for_test, "test-weights-003", config)
+
+        self._run(conn_for_test, settings, run_id, config)
+
+        events = read_run_events(conn_for_test, run_id)
+        assert any(
+            e.level == "warning" and "Complexity weights overridden" in e.message
+            for e in events
+        )
+
+    def test_invalid_override_fails_preflight(
+        self, conn_for_test: sqlite3.Connection, settings: Settings
+    ):
+        config = PipelineConfig(complexity_weights_override={"size_bytes": -1.0})
+        run_id = _create_test_run(conn_for_test, "test-weights-004", config)
+
+        result, mock_enr, _ = self._run(conn_for_test, settings, run_id, config)
+
+        assert result.status == "failed"
+        assert "complexity weights" in result.error_message.lower()
+        assert result.stages_run == []
+        mock_enr.assert_not_called()

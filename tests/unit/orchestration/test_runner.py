@@ -118,7 +118,7 @@ class TestStartPipelineAsync:
             return None
 
         with patch("steam_analyst.orchestration.runner.run_pipeline", mock_run_pipeline):
-            with patch("steam_analyst.orchestration.runner.parameters_version", return_value="abc123"):
+            with patch("steam_analyst.orchestration.runner.run_parameters_version", return_value="abc123"):
                 with patch(
                     "steam_analyst.orchestration.runner.load_settings", return_value=settings
                 ):
@@ -151,7 +151,7 @@ class TestStartPipelineAsync:
             proceed_event.wait(timeout=5.0)
 
         with patch("steam_analyst.orchestration.runner.run_pipeline", mock_run_pipeline):
-            with patch("steam_analyst.orchestration.runner.parameters_version", return_value="abc123"):
+            with patch("steam_analyst.orchestration.runner.run_parameters_version", return_value="abc123"):
                 with patch(
                     "steam_analyst.orchestration.runner.load_settings", return_value=settings
                 ):
@@ -177,7 +177,7 @@ class TestStartPipelineAsync:
             proceed_event.wait(timeout=5.0)
 
         with patch("steam_analyst.orchestration.runner.run_pipeline", mock_run_pipeline):
-            with patch("steam_analyst.orchestration.runner.parameters_version", return_value="abc123"):
+            with patch("steam_analyst.orchestration.runner.run_parameters_version", return_value="abc123"):
                 with patch(
                     "steam_analyst.orchestration.runner.load_settings", return_value=settings
                 ):
@@ -203,7 +203,7 @@ class TestStartPipelineAsync:
             "steam_analyst.orchestration.runner.create_run",
             side_effect=sqlite3.Error("Database is locked"),
         ):
-            with patch("steam_analyst.orchestration.runner.parameters_version", return_value="abc123"):
+            with patch("steam_analyst.orchestration.runner.run_parameters_version", return_value="abc123"):
                 with pytest.raises(sqlite3.Error):
                     start_pipeline_async(temp_db_path, pipeline_config, settings=settings)
 
@@ -359,6 +359,33 @@ class TestResumeRun:
                 wait_for_condition(proceed_event.is_set, timeout_seconds=2.0)
                 wait_for_condition(lambda: not is_running(run_id), timeout_seconds=2.0)
 
+    def test_resume_keeps_complexity_weights_override(self, temp_db_path, settings):
+        """A resumed run keeps the weights override stored in its config."""
+        config = PipelineConfig(complexity_weights_override={"size_bytes": 0.4})
+        with connect(temp_db_path) as conn:
+            run_id = create_run(
+                conn,
+                config=config.to_dict(),
+                parameters_version="abc123",
+                trigger_type="manual",
+                notes=None,
+            )
+
+        seen = {}
+        proceed_event = threading.Event()
+
+        def mock_run_pipeline(conn, rid, resumed, **kwargs):
+            seen["override"] = resumed.complexity_weights_override
+            proceed_event.set()
+
+        with patch("steam_analyst.orchestration.runner.run_pipeline", mock_run_pipeline):
+            with patch("steam_analyst.orchestration.runner.load_settings", return_value=settings):
+                resume_run(temp_db_path, run_id, settings=settings)
+                wait_for_condition(proceed_event.is_set, timeout_seconds=2.0)
+                wait_for_condition(lambda: not is_running(run_id), timeout_seconds=2.0)
+
+        assert seen["override"] == {"size_bytes": 0.4}
+
     def test_resume_returns_same_run_id(self, temp_db_path, settings, pipeline_config):
         """resume_run returns the same run_id, creates no new row."""
         with connect(temp_db_path) as conn:
@@ -402,7 +429,7 @@ class TestCancelRun:
             proceed_event.wait(timeout=5.0)
 
         with patch("steam_analyst.orchestration.runner.run_pipeline", mock_run_pipeline):
-            with patch("steam_analyst.orchestration.runner.parameters_version", return_value="abc123"):
+            with patch("steam_analyst.orchestration.runner.run_parameters_version", return_value="abc123"):
                 with patch(
                     "steam_analyst.orchestration.runner.load_settings", return_value=settings
                 ):
@@ -429,7 +456,7 @@ class TestCancelRun:
             proceed_event.set()
 
         with patch("steam_analyst.orchestration.runner.run_pipeline", mock_run_pipeline):
-            with patch("steam_analyst.orchestration.runner.parameters_version", return_value="abc123"):
+            with patch("steam_analyst.orchestration.runner.run_parameters_version", return_value="abc123"):
                 with patch(
                     "steam_analyst.orchestration.runner.load_settings", return_value=settings
                 ):
@@ -451,7 +478,7 @@ class TestCancelRun:
             proceed_event.wait(timeout=5.0)
 
         with patch("steam_analyst.orchestration.runner.run_pipeline", mock_run_pipeline):
-            with patch("steam_analyst.orchestration.runner.parameters_version", return_value="abc123"):
+            with patch("steam_analyst.orchestration.runner.run_parameters_version", return_value="abc123"):
                 with patch(
                     "steam_analyst.orchestration.runner.load_settings", return_value=settings
                 ):
@@ -476,7 +503,7 @@ class TestCancelRun:
             proceed_event.wait(timeout=5.0)
 
         with patch("steam_analyst.orchestration.runner.run_pipeline", mock_run_pipeline):
-            with patch("steam_analyst.orchestration.runner.parameters_version", return_value="abc123"):
+            with patch("steam_analyst.orchestration.runner.run_parameters_version", return_value="abc123"):
                 with patch(
                     "steam_analyst.orchestration.runner.load_settings", return_value=settings
                 ):
@@ -523,7 +550,7 @@ class TestIsRunningAndActiveRunIds:
             proceed_event.wait(timeout=5.0)
 
         with patch("steam_analyst.orchestration.runner.run_pipeline", mock_run_pipeline):
-            with patch("steam_analyst.orchestration.runner.parameters_version", return_value="abc123"):
+            with patch("steam_analyst.orchestration.runner.run_parameters_version", return_value="abc123"):
                 with patch(
                     "steam_analyst.orchestration.runner.load_settings", return_value=settings
                 ):
@@ -546,7 +573,7 @@ class TestIsRunningAndActiveRunIds:
             proceed_event.wait(timeout=5.0)
 
         with patch("steam_analyst.orchestration.runner.run_pipeline", mock_run_pipeline):
-            with patch("steam_analyst.orchestration.runner.parameters_version", return_value="abc123"):
+            with patch("steam_analyst.orchestration.runner.run_parameters_version", return_value="abc123"):
                 with patch(
                     "steam_analyst.orchestration.runner.load_settings", return_value=settings
                 ):
@@ -571,7 +598,7 @@ class TestIsRunningAndActiveRunIds:
             proceed_event.wait(timeout=5.0)
 
         with patch("steam_analyst.orchestration.runner.run_pipeline", mock_run_pipeline):
-            with patch("steam_analyst.orchestration.runner.parameters_version", return_value="abc123"):
+            with patch("steam_analyst.orchestration.runner.run_parameters_version", return_value="abc123"):
                 with patch(
                     "steam_analyst.orchestration.runner.load_settings", return_value=settings
                 ):
@@ -661,7 +688,7 @@ class TestReconcileOrphanedRuns:
             proceed_event.wait(timeout=5.0)
 
         with patch("steam_analyst.orchestration.runner.run_pipeline", mock_run_pipeline):
-            with patch("steam_analyst.orchestration.runner.parameters_version", return_value="abc123"):
+            with patch("steam_analyst.orchestration.runner.run_parameters_version", return_value="abc123"):
                 with patch(
                     "steam_analyst.orchestration.runner.load_settings", return_value=settings
                 ):

@@ -1,5 +1,6 @@
 """Pipeline execution: run orchestration, stage sequencing, and exception mapping."""
 
+import dataclasses
 import logging
 import sqlite3
 import threading
@@ -9,7 +10,13 @@ from typing import Optional
 
 from steam_analyst.acquisition.pipeline import run_acquisition
 from steam_analyst.analysis.pipeline import run_analysis
-from steam_analyst.config.parameters import load_parameters, parameters_version
+from steam_analyst.config.parameters import (
+    ParameterError,
+    effective_parameters_version,
+    load_parameters,
+    parameters_version,
+    resolve_complexity_weights,
+)
 from steam_analyst.config.settings import load_settings, Settings
 from steam_analyst.enrichment.pipeline import run_enrichment
 from steam_analyst.storage import (
@@ -181,6 +188,23 @@ def run_pipeline(
         except Exception as e:
             raise PreflightError(f"Failed to load parameters: {e}", cause=e)
 
+        # (c2) Apply the run's complexity-weights override, if any
+        locked_weights = enrichment_params.complexity_weights
+        try:
+            effective_weights = resolve_complexity_weights(
+                locked_weights, config.complexity_weights_override
+            )
+        except ParameterError as e:
+            raise PreflightError(f"Invalid complexity weights override: {e}", cause=e)
+        weights_overridden = effective_weights != locked_weights
+        if weights_overridden:
+            parameters_version_value = effective_parameters_version(
+                parameters_version_value, locked_weights, effective_weights
+            )
+            enrichment_params = dataclasses.replace(
+                enrichment_params, complexity_weights=effective_weights
+            )
+
         # (d) Run ADR-013 parameters.toml / FORMULATION.md consistency check
         try:
             from scripts.verify_parameters_consistency import verify_parameters_consistency
@@ -229,6 +253,15 @@ def run_pipeline(
             level="info",
             message="Pipeline starting",
         )
+        if weights_overridden:
+            append_run_event(
+                conn,
+                run_id,
+                stage=RUN_LEVEL_STAGE,
+                level="warning",
+                message="Complexity weights overridden for this run: "
+                + ", ".join(f"{k}={v:.4f}" for k, v in effective_weights.items()),
+            )
 
         # Create a list of stages in order for comparison
         # list(PipelineStage) is guaranteed to be in declaration order (Python 3.7+)

@@ -19,7 +19,7 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-from steam_analyst.config.parameters import parameters_version
+from steam_analyst.config.parameters import run_parameters_version
 from steam_analyst.config.settings import Settings, load_settings
 from steam_analyst.storage import (
     append_run_event,
@@ -84,7 +84,9 @@ def start_pipeline_async(
         settings = load_settings()
 
     # Step 2: Compute parameters_version (cheap hash, doesn't require load_parameters)
-    parameters_version_value = parameters_version(settings.parameters_path)
+    parameters_version_value = run_parameters_version(
+        settings.parameters_path, config.complexity_weights_override
+    )
 
     # Step 3: Create run row on calling thread
     with connect(db_path) as conn:
@@ -202,6 +204,7 @@ def resume_run(
             start_stage=start_stage,
             max_catalog_pages=resumed_config.max_catalog_pages,
             request_budget_override=resumed_config.request_budget_override,
+            complexity_weights_override=resumed_config.complexity_weights_override,
             notes=resumed_config.notes,
         )
 

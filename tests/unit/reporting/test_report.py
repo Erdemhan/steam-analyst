@@ -744,3 +744,32 @@ class TestSimpleSubset:
 
         assert _simple_subset(self._frame(), 0).empty
         assert _simple_subset(self._frame(), None).empty
+
+
+class TestCustomComplexityWeightsCaveat:
+    """The report warns when a run overrode the locked complexity weights."""
+
+    def _caveat_keys(self, conn: sqlite3.Connection, config: dict) -> list[str]:
+        run_id = create_run(
+            conn, config=config, parameters_version="v1", trigger_type="manual"
+        )
+        return [c.key for c in load_run_report(conn, run_id).caveats]
+
+    def test_override_adds_warning_caveat(self, conn: sqlite3.Connection):
+        run_id = create_run(
+            conn,
+            config={"complexity_weights_override": {"size_bytes": 0.4}},
+            parameters_version="v1",
+            trigger_type="manual",
+        )
+        caveats = {c.key: c for c in load_run_report(conn, run_id).caveats}
+        assert "custom_complexity_weights" in caveats
+        assert caveats["custom_complexity_weights"].severity == "warning"
+        assert "size_bytes = 0.4" in caveats["custom_complexity_weights"].body
+
+    def test_no_override_adds_no_caveat(self, conn: sqlite3.Connection):
+        assert "custom_complexity_weights" not in self._caveat_keys(conn, {"test": True})
+
+    def test_null_override_adds_no_caveat(self, conn: sqlite3.Connection):
+        keys = self._caveat_keys(conn, {"complexity_weights_override": None})
+        assert "custom_complexity_weights" not in keys

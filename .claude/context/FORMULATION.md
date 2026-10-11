@@ -207,6 +207,14 @@ minimum RAM requirement is parsed from the `Memory:` / `RAM:` line of the `pc_re
 text (the minimum requirements, falling back to the recommended ones). Its normalization
 bounds are frozen below like those of the other log-scaled features.
 
+**Per-run weights override (user-approved 2026-10-11).** The weights above are the locked
+defaults and stay unchanged in this record and in `config/parameters.toml`. A run may
+replace some of them through `PipelineConfig.complexity_weights_override`. Features left
+out keep their default, then all ten are rescaled to sum to 1.00. The override and the
+resulting `parameters_version` are stored with the run, and the result page marks it as not
+comparable with runs that use the defaults. The normalization bounds do not depend on the
+weights and are not affected.
+
 **✅ LOCKED (user-approved 2026-09-20).** Normalization bounds `a`, `b` per feature
 are derived empirically from the candidate-set distribution of the first completed
 run (5th and 95th percentiles), not guessed a priori, then frozen so scores stay
