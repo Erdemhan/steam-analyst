@@ -156,11 +156,17 @@ def run_acquisition(
             conn, run_id, config, settings, candidate_appids, rate_limiter, on_event
         )
 
-        # Update funnel result with release-date rejections
+        # Update funnel result with release-date rejections, keeping the coarse
+        # filter's own rejection counts
         funnel_result_updated = FunnelResult(
             candidates=detail_results["candidates_after_date_filter"],
             total_input=funnel_result.total_input,
-            rejected_by_reason=detail_results["updated_rejection_reasons"],
+            rejected_by_reason={
+                **funnel_result.rejected_by_reason,
+                "release_date_outside_window": detail_results[
+                    "updated_rejection_reasons"
+                ]["release_date_outside_window"],
+            },
             criteria=funnel_result.criteria,
         )
 

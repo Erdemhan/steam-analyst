@@ -45,13 +45,15 @@ Items recorded for later. None of these are started.
 - Make writing opt-in (for example a `--write` flag), default to print-only, and reconcile the docstring with the behavior.
 - Status: the script is print-only by default and writes `config/parameters.toml` only with `--write`; file I/O is explicit UTF-8.
 
-## 5. Funnel report shows zero coarse-filter rejections
+## 5. Funnel report shows zero coarse-filter rejections (fixed for new runs)
 
 - `funnel_report.rejected_by_reason` reports 0 for `review_count_below_floor` and `publisher_blocklisted`
   while only `release_date_outside_window` is non-zero (run 20261003T162937824Z-28423c, 3000 catalog apps, 713 candidates).
 - The counts from the SteamSpy coarse filter (`acquisition/funnel.py`) do not appear to reach the stored report
   (`_get_initial_rejection_reasons` in `acquisition/pipeline.py` starts all at zero).
 - Verify and merge the funnel's own counts into the stored report.
+- Status: cause confirmed (the second report write replaced the coarse counts with zeros) and fixed; new runs keep both
+  the coarse-filter and release-date counts. Reports already stored for earlier runs keep the old zeros.
 
 ## 6. Too few recent games in the sample for the opportunity matrix (partly addressed)
 
