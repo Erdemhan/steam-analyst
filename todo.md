@@ -37,12 +37,13 @@ Items recorded for later. None of these are started.
 - Status: the widened interval is capped at 60 s and halves after 20 consecutive non-429 responses.
   The 30 requests/minute default produced no 429 over about 10000 requests, so it stays.
 
-## 4. Freeze script must not write locked values without confirmation
+## 4. Freeze script must not write locked values without confirmation (done)
 
 - `scripts/freeze_empirical_parameters.py` rewrites the complexity bounds and `tag_distance_threshold` in
   `config/parameters.toml` directly, although the module docstring says it only prints the text to paste (ADR-012).
 - Observed: running it on a new run silently replaced already frozen bounds.
 - Make writing opt-in (for example a `--write` flag), default to print-only, and reconcile the docstring with the behavior.
+- Status: the script is print-only by default and writes `config/parameters.toml` only with `--write`; file I/O is explicit UTF-8.
 
 ## 5. Funnel report shows zero coarse-filter rejections
 

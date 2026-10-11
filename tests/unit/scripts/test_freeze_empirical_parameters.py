@@ -32,6 +32,7 @@ from freeze_empirical_parameters import (
     FormulationSnippet,
     compute_frozen_bounds,
     format_formulation_snippet,
+    main,
     write_parameters_toml_section,
 )
 
@@ -153,7 +154,8 @@ generic_tag_max_share = 0.15
 demand = 0.40
 competition = 0.30
 simplicity = 0.30
-"""
+""",
+        encoding="utf-8",
     )
     return params_file
 
@@ -631,3 +633,53 @@ class TestFormatFormulationSnippet:
 
         with pytest.raises(KeyError):
             format_formulation_snippet("test_run", date(2026, 9, 22), bounds)
+
+
+class TestMainWriteFlag:
+    """The script is print-only unless --write is passed."""
+
+    def _populated_run(self, temp_db: Path) -> str:
+        conn = get_connection(temp_db)
+        try:
+            run_id = create_run(conn, config={"test": True}, parameters_version="test_v1")
+            enriched = _make_enriched_frame(
+                list(range(100, 150)),
+                size_bytes=[2e9 + i * 1e8 for i in range(50)],
+                early_access_days=[30 + i * 5 for i in range(50)],
+                dev_title_count=[3 + i for i in range(50)],
+                achievement_count=[20 + i * 5 for i in range(50)],
+                dlc_count=[1 + i for i in range(50)],
+                language_count=[5 + i for i in range(50)],
+            )
+            write_enriched(conn, run_id, enriched)
+            update_run_status(conn, run_id, "succeeded")
+            return run_id
+        finally:
+            conn.close()
+
+    def test_default_run_leaves_parameters_file_untouched(
+        self, temp_db: Path, temp_parameters_toml: Path, capsys
+    ):
+        run_id = self._populated_run(temp_db)
+        before = temp_parameters_toml.read_bytes()
+
+        main([run_id, "--db-path", str(temp_db), "--parameters-path", str(temp_parameters_toml)])
+
+        assert temp_parameters_toml.read_bytes() == before
+        out = capsys.readouterr().out
+        assert "[print-only]" in out
+        assert "PASTE INTO FORMULATION.md" in out
+
+    def test_write_flag_updates_parameters_file(
+        self, temp_db: Path, temp_parameters_toml: Path, capsys
+    ):
+        run_id = self._populated_run(temp_db)
+        before = temp_parameters_toml.read_bytes()
+
+        main([
+            run_id, "--db-path", str(temp_db),
+            "--parameters-path", str(temp_parameters_toml), "--write",
+        ])
+
+        assert temp_parameters_toml.read_bytes() != before
+        assert "[OK] Updated" in capsys.readouterr().out

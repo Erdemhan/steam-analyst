@@ -6,6 +6,10 @@ threshold that FORMULATION.md locks as 'derived from the first completed run'.
 Per ADR-012, this script does NOT edit FORMULATION.md itself (that file is
 user-locked); instead, it prints the exact text for a human to paste into both
 sections 4/6 (prose record) and section 8 (machine-readable toml block).
+
+By default the script is print-only and modifies no file. Passing --write also
+updates the complexity bounds and tag_distance_threshold in config/parameters.toml,
+which must only be done after the user has approved the values.
 """
 
 import argparse
@@ -211,7 +215,7 @@ def write_parameters_toml_section(path: Path, bounds: FrozenBounds) -> None:
     if not path.exists():
         raise FileNotFoundError(f"Parameters file not found: {path}")
 
-    with open(path, "r") as f:
+    with open(path, "r", encoding="utf-8") as f:
         doc = tomlkit.parse(f.read())
 
     # Update complexity_bounds in enrichment section
@@ -239,7 +243,7 @@ def write_parameters_toml_section(path: Path, bounds: FrozenBounds) -> None:
         ) from e
 
     # Write back to file
-    with open(path, "w") as f:
+    with open(path, "w", encoding="utf-8", newline="") as f:
         f.write(tomlkit.dumps(doc))
 
 
@@ -325,7 +329,7 @@ tag_distance_threshold = {bounds.tag_distance_threshold}"""
     return FormulationSnippet(prose_record=prose_record, toml_block_update=toml_block_update)
 
 
-def main() -> None:
+def main(argv: list[str] | None = None) -> None:
     """CLI entry point for freezing empirical parameters."""
     parser = argparse.ArgumentParser(
         description="Freeze empirical parameters from a completed run."
@@ -344,7 +348,16 @@ def main() -> None:
         help="Path to config/parameters.toml (default: from config/settings.py)",
     )
 
-    args = parser.parse_args()
+    parser.add_argument(
+        "--write",
+        action="store_true",
+        help=(
+            "Also write the computed bounds and threshold into config/parameters.toml. "
+            "Without this flag the script only prints and changes no file."
+        ),
+    )
+
+    args = parser.parse_args(argv)
 
     # Determine DB path
     if args.db_path is None:
@@ -369,10 +382,6 @@ def main() -> None:
         # Compute frozen bounds
         bounds = compute_frozen_bounds(conn, args.run_id, analysis_params)
 
-        # Write to parameters.toml
-        write_parameters_toml_section(params_path, bounds)
-        print("✓ Updated config/parameters.toml")
-
         # Format and print the snippet for manual FORMULATION.md update
         snippet = format_formulation_snippet(args.run_id, date.today(), bounds)
 
@@ -386,6 +395,15 @@ def main() -> None:
         print("=" * 80)
         print(snippet.toml_block_update)
         print("=" * 80)
+
+        if args.write:
+            write_parameters_toml_section(params_path, bounds)
+            print(f"[OK] Updated {params_path}")
+        else:
+            print(
+                f"[print-only] {params_path} was NOT modified. "
+                "Re-run with --write after the values are approved."
+            )
 
     finally:
         conn.close()
