@@ -89,7 +89,7 @@ Items recorded for later. None of these are started.
   `analysis.max_cluster_share = 0.15` of the clustered games. It reproduces the frozen 0.9367 on run 20261003T162937824Z-28423c
   and gives 0.9219 on run 20261003T204134704Z-d8d2b3, so nothing was re-frozen.
 
-## 8. Request budget does not scale with the scan size
+## 8. Request budget does not scale with the scan size (done)
 
 - `acquisition.request_budget = 10000` is counted per invocation of `run_acquisition`, and a 10-page scan needs
   about 14000 requests (7827 appdetails + 3004 review summaries + 3004 SteamSpy details). Run
@@ -98,6 +98,9 @@ Items recorded for later. None of these are started.
 - Derive the budget from the planned scan size (or from `max_catalog_pages`) and track the total per run.
 - Resume bug found on the same run and fixed in commit 8a551b4: totals now cover earlier invocations. The stored
   `funnel_report` of run 20261003T162937824Z-28423c still carries the old undercount (1555 instead of 2055 fetched).
+- Status: the budget is now per run. It is the explicit override, else `request_budget`, raised to
+  `request_budget_per_catalog_page` (1500) times `max_catalog_pages`, minus the requests already stored for the run, so resumes
+  no longer get a fresh budget. The new-analysis form's budget field (`request_budget_override`) had no effect before; it is applied now.
 
 ## 9. Software-like archetype among games
 

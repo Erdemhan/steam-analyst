@@ -29,6 +29,7 @@ def create_minimal_valid_raw() -> dict[str, Any]:
             "backoff_base_seconds": 1.0,
             "backoff_max_seconds": 60.0,
             "request_budget": 10000,
+            "request_budget_per_catalog_page": 1500,
             "coarse_filter": {
                 "min_review_count": 25,
                 "earliest_release_date": "2020-01-01",
@@ -166,6 +167,7 @@ class TestValidateParameters:
                 "backoff_base_seconds": 1.0,
                 "backoff_max_seconds": 60.0,
                 "request_budget": 10000,
+                "request_budget_per_catalog_page": 1500,
                 # missing coarse_filter
             },
             "enrichment": {},
@@ -185,6 +187,7 @@ class TestValidateParameters:
                 "backoff_base_seconds": 1.0,
                 "backoff_max_seconds": 60.0,
                 "request_budget": 10000,
+                "request_budget_per_catalog_page": 1500,
                 "coarse_filter": {
                     "min_review_count": 25,
                     "earliest_release_date": "2020-01-01",

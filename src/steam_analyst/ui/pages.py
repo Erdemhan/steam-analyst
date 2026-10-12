@@ -409,8 +409,10 @@ def render_new_analysis_page(conn: sqlite3.Connection, settings: Settings) -> No
             value=None,
             help=(
                 "Bu analizde Steam ve SteamSpy'a atılacak toplam API isteği için "
-                "üst sınırdır. Sınıra ulaşılınca analiz kalan işi yapmadan durur.\n\n"
-                "Boş bırakırsanız ayar dosyasındaki varsayılan bütçe kullanılır.\n\n"
+                "üst sınırdır. Sınıra ulaşılınca analiz kalan işi yapmadan durur. "
+                "Devam ettirilen analizlerde önceki denemelerin istekleri de sayılır.\n\n"
+                "Boş bırakırsanız ayar dosyasındaki varsayılan bütçe kullanılır. Katalog "
+                "sayfa sayısını sınırlarsanız sayfa başına yaklaşık 1500 istek ayrılır.\n\n"
                 "Düşük değer süreyi ve API yükünü sınırlar, ama daha az aday "
                 "işlenir. İlk tam taramada varsayılanı değiştirmemeniz önerilir."
             ),

@@ -31,6 +31,9 @@ max_retries = 3
 backoff_base_seconds = 1.0
 backoff_max_seconds = 60.0
 request_budget = 10000
+# Expected requests per scanned SteamSpy catalog page; a run that limits the pages gets
+# at least this times the page count (about 1400 were used per page on a 10-page scan).
+request_budget_per_catalog_page = 1500
 
 # --- enrichment: Boxleiter multipliers (FORMULATION.md §2) ---
 [enrichment.boxleiter_multipliers]

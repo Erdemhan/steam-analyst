@@ -600,3 +600,26 @@ class TestComplexityWeightsOverrideInPipeline:
         assert "complexity weights" in result.error_message.lower()
         assert result.stages_run == []
         mock_enr.assert_not_called()
+
+
+class TestRequestBudgetOverrideIsPassedToAcquisition:
+    def test_override_reaches_run_acquisition(
+        self, conn_for_test: sqlite3.Connection, settings: Settings
+    ):
+        config = PipelineConfig(max_catalog_pages=3, request_budget_override=4321)
+        run_id = _create_test_run(conn_for_test, "test-budget-001", config)
+
+        with patch("steam_analyst.orchestration.pipeline.run_acquisition") as mock_acq,              patch("steam_analyst.orchestration.pipeline.run_enrichment") as mock_enr,              patch("steam_analyst.orchestration.pipeline.run_analysis") as mock_ana,              patch("steam_analyst.orchestration.pipeline.load_parameters") as mock_load_params,              patch("steam_analyst.orchestration.pipeline.parameters_version") as mock_params_ver,              patch("scripts.verify_parameters_consistency.verify_parameters_consistency"):
+            mock_acq.return_value = _make_acq_report(run_id)
+            mock_enr.return_value = _make_enr_report(run_id)
+            mock_ana.return_value = _make_ana_report(run_id)
+            mock_load_params.return_value = (
+                MagicMock(spec=AcquisitionConfig),
+                MagicMock(spec=EnrichmentParams, complexity_weights={"a": 1.0}),
+                MagicMock(spec=AnalysisParams),
+            )
+            mock_params_ver.return_value = "abc123def456"
+            run_pipeline(conn_for_test, run_id, config, settings=settings)
+
+        assert mock_acq.call_args.kwargs["request_budget_override"] == 4321
+        assert mock_acq.call_args.kwargs["max_catalog_pages"] == 3

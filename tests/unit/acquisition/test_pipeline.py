@@ -15,6 +15,8 @@ import pytest
 from steam_analyst.acquisition.errors import AcquisitionError, RequestBudgetExceeded
 from steam_analyst.acquisition.funnel import AcquisitionReport, FunnelResult
 from steam_analyst.acquisition.pipeline import (
+    _count_requests_made,
+    _resolve_request_budget,
     _fetch_and_filter_details,
     _fetch_and_persist_reviews,
     _fetch_and_persist_steamspy,
@@ -753,6 +755,115 @@ class TestFunnelReportRejectionCounts:
             assert rejected["review_count_below_floor"] == 5
             assert rejected["publisher_blocklisted"] == 2
             assert rejected["release_date_outside_window"] == 1
+
+
+class TestRequestBudget:
+    """The request budget covers the whole run and honors the override."""
+
+    def _config(self, acquisition_config, **changes):
+        from dataclasses import replace
+
+        return replace(acquisition_config, **changes)
+
+    def test_default_is_the_configured_budget(self, acquisition_config):
+        assert _resolve_request_budget(acquisition_config, None, None) == 1000
+
+    def test_override_wins(self, acquisition_config):
+        config = self._config(acquisition_config, request_budget_per_catalog_page=1500)
+        assert _resolve_request_budget(config, 10, 777) == 777
+
+    def test_limited_pages_scale_the_budget_up(self, acquisition_config):
+        config = self._config(acquisition_config, request_budget_per_catalog_page=1500)
+        assert _resolve_request_budget(config, 10, None) == 15000
+
+    def test_limited_pages_never_lower_the_configured_budget(self, acquisition_config):
+        config = self._config(acquisition_config, request_budget_per_catalog_page=100)
+        assert _resolve_request_budget(config, 2, None) == 1000
+
+    def test_scaling_can_be_disabled(self, acquisition_config):
+        config = self._config(acquisition_config, request_budget_per_catalog_page=0)
+        assert _resolve_request_budget(config, 10, None) == 1000
+
+    def _prefetched_run(self, temp_db, run_id, acquisition_config):
+        from steam_analyst.storage import upsert_raw_payloads
+
+        stored = []
+        for appid in (1, 2):
+            payload = {str(appid): {"success": True, "data": {"release_date": "Jan 15, 2020"}}}
+            stored.append(
+                RawPayload(
+                    appid=appid,
+                    source="steam_appdetails",
+                    fetched_at=datetime.utcnow(),
+                    http_status=200,
+                    payload=payload,
+                    payload_sha256=compute_payload_sha256(payload),
+                )
+            )
+        upsert_raw_payloads(temp_db, run_id, stored)
+
+    def _run(self, temp_db, run_id, settings, acquisition_config, mock_event_sink, **kwargs):
+        funnel = FunnelResult(
+            candidates=pd.DataFrame({"appid": [1, 2]}),
+            total_input=2,
+            rejected_by_reason={
+                "duplicate_appid": 0,
+                "missing_required_field": 0,
+                "review_count_below_floor": 0,
+                "review_count_above_ceiling": 0,
+                "free_to_play_excluded": 0,
+                "price_above_max": 0,
+                "publisher_blocklisted": 0,
+            },
+            criteria=acquisition_config.coarse_filter,
+        )
+        with patch(
+            "steam_analyst.acquisition.pipeline.fetch_steamspy_catalog", return_value=iter([])
+        ), patch(
+            "steam_analyst.acquisition.pipeline.build_catalog_frame",
+            return_value=pd.DataFrame(
+                {"appid": [1, 2], "positive": [50, 50], "negative": [10, 10]}
+            ),
+        ), patch(
+            "steam_analyst.acquisition.pipeline.coarse_filter", return_value=funnel
+        ), patch(
+            "steam_analyst.acquisition.pipeline.fetch_app_details", return_value=iter([])
+        ), patch(
+            "steam_analyst.acquisition.pipeline.fetch_review_summaries", return_value=iter([])
+        ), patch(
+            "steam_analyst.acquisition.pipeline.HttpClient"
+        ), patch(
+            "steam_analyst.acquisition.pipeline._create_rate_limiter"
+        ) as mock_limiter:
+            run_acquisition(
+                temp_db, run_id, acquisition_config, settings,
+                on_event=mock_event_sink, **kwargs,
+            )
+            return mock_limiter
+
+    def test_resumed_invocation_gets_only_what_is_left(
+        self, temp_db, run_id, settings, acquisition_config, mock_event_sink
+    ):
+        self._prefetched_run(temp_db, run_id, acquisition_config)
+        assert _count_requests_made(temp_db, run_id) == 2
+
+        mock_limiter = self._run(
+            temp_db, run_id, settings, acquisition_config, mock_event_sink,
+            request_budget_override=10,
+        )
+
+        assert mock_limiter.call_args.args[1] == 8
+
+    def test_exhausted_budget_stops_before_any_request(
+        self, temp_db, run_id, settings, acquisition_config, mock_event_sink
+    ):
+        self._prefetched_run(temp_db, run_id, acquisition_config)
+
+        with pytest.raises(AcquisitionError, match="exhausted before this invocation"):
+            self._run(
+                temp_db, run_id, settings, acquisition_config, mock_event_sink,
+                request_budget_override=2,
+            )
 
 
 class TestParseReleaseDate:

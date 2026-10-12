@@ -109,11 +109,20 @@ def validate_parameters(raw: dict[str, Any]) -> None:
         "backoff_base_seconds",
         "backoff_max_seconds",
         "request_budget",
+        "request_budget_per_catalog_page",
         "coarse_filter",
     ]
     for key in acq_required_keys:
         if key not in acq:
             raise ParameterError(f"missing key: acquisition.{key}")
+
+    if not isinstance(acq["request_budget_per_catalog_page"], int) or acq[
+        "request_budget_per_catalog_page"
+    ] < 0:
+        raise ParameterError(
+            "acquisition.request_budget_per_catalog_page must be an integer >= 0, got "
+            f"{acq['request_budget_per_catalog_page']!r}"
+        )
 
     # Validate coarse_filter subsection
     cf = acq["coarse_filter"]
@@ -517,6 +526,7 @@ def load_parameters(path: Path) -> tuple:
         backoff_base_seconds=acq_raw["backoff_base_seconds"],
         backoff_max_seconds=acq_raw["backoff_max_seconds"],
         request_budget=acq_raw["request_budget"],
+        request_budget_per_catalog_page=acq_raw["request_budget_per_catalog_page"],
         coarse_filter=coarse_filter,
     )
 

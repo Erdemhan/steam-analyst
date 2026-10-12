@@ -293,6 +293,7 @@ def run_pipeline(
                     settings,
                     on_event=sink,
                     max_catalog_pages=config.max_catalog_pages,
+                    request_budget_override=config.request_budget_override,
                 )
                 reports["acquisition"] = report
 

@@ -140,6 +140,7 @@ max_retries = 3
 backoff_base_seconds = 1.0
 backoff_max_seconds = 60.0
 request_budget = 10000
+request_budget_per_catalog_page = 1500
 
 # --- enrichment: Boxleiter multipliers (FORMULATION.md §2) ---
 [enrichment.boxleiter_multipliers]
@@ -342,6 +343,7 @@ max_retries = 3
 backoff_base_seconds = 1.0
 backoff_max_seconds = 60.0
 request_budget = 10000
+request_budget_per_catalog_page = 1500
 
 [enrichment.boxleiter_multipliers]
 niche = [20, 27, 35]

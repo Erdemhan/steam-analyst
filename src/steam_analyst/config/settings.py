@@ -65,8 +65,14 @@ class AcquisitionConfig:
         backoff_max_seconds: Backoff interval ceiling.
         request_budget: Hard per-run request cap; RateLimiter.acquire raises
             RequestBudgetExceeded once spent, per ADR-004/006 'fail loudly
-            rather than hammer the API'.
+            rather than hammer the API'. Counted over the whole run, including
+            invocations that resume it.
         coarse_filter: Nested CoarseFilterCriteria band.
+        request_budget_per_catalog_page: Requests a scanned SteamSpy catalog
+            page is expected to cost (appdetails, review summaries and SteamSpy
+            details for its survivors). When a run limits the catalog pages, its
+            budget is at least this value times the page count. 0 disables the
+            scaling.
     """
 
     steamspy_page_delay_seconds: float
@@ -76,6 +82,7 @@ class AcquisitionConfig:
     backoff_max_seconds: float
     request_budget: int
     coarse_filter: CoarseFilterCriteria
+    request_budget_per_catalog_page: int = 0
 
 
 @dataclass(frozen=True)

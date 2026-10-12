@@ -43,6 +43,7 @@ def run_acquisition(
     *,
     on_event: EventSink,
     max_catalog_pages: int | None = None,
+    request_budget_override: int | None = None,
 ) -> AcquisitionReport:
     """Run the full acquisition stage for one run.
 
@@ -56,6 +57,12 @@ def run_acquisition(
             orchestration.PipelineConfig.max_catalog_pages. None (the default)
             means no limit -- fetch the entire catalog. Intended for smoke
             tests and manual verification runs, never for a real analysis run.
+        request_budget_override: Total request budget for the run, from
+            orchestration.PipelineConfig.request_budget_override. None uses the
+            configured budget, raised to request_budget_per_catalog_page times
+            max_catalog_pages when the pages are limited. The budget covers the
+            whole run: requests made by earlier invocations that this call
+            resumes are subtracted.
 
     Returns:
         An AcquisitionReport summarizing the stage.
@@ -148,8 +155,26 @@ def run_acquisition(
             message=f"Starting detail fetch for {len(candidate_appids)} candidates",
         )
 
-        # Create shared rate limiter
-        rate_limiter = _create_rate_limiter(config)
+        # Create shared rate limiter with what is left of the run's request budget
+        total_budget = _resolve_request_budget(
+            config, max_catalog_pages, request_budget_override
+        )
+        used_before = _count_requests_made(conn, run_id)
+        remaining_budget = total_budget - used_before
+        on_event(
+            stage="acquisition",
+            level="info",
+            message=(
+                f"Request budget: {total_budget} for the run, {used_before} already "
+                f"used, {max(remaining_budget, 0)} left"
+            ),
+        )
+        if remaining_budget <= 0:
+            raise AcquisitionError(
+                f"Request budget exhausted before this invocation: {used_before} of "
+                f"{total_budget} requests already used by this run"
+            )
+        rate_limiter = _create_rate_limiter(config, remaining_budget)
 
         # Fetch details, persist, and apply release-date filter
         detail_results = _fetch_and_filter_details(
@@ -309,20 +334,67 @@ def _fetch_and_persist_steamspy(
         upsert_raw_payloads(conn, run_id, payloads_to_persist)
 
 
-def _create_rate_limiter(config: AcquisitionConfig) -> RateLimiter:
+def _resolve_request_budget(
+    config: AcquisitionConfig,
+    max_catalog_pages: int | None,
+    request_budget_override: int | None,
+) -> int:
+    """Total request budget of a run.
+
+    Args:
+        config: Acquisition config.
+        max_catalog_pages: The run's catalog page limit, or None.
+        request_budget_override: The run's explicit budget, or None.
+
+    Returns:
+        The override when given, otherwise the configured budget, raised to
+        request_budget_per_catalog_page times max_catalog_pages when the pages
+        are limited.
+    """
+    if request_budget_override:
+        return request_budget_override
+    if max_catalog_pages:
+        return max(
+            config.request_budget,
+            max_catalog_pages * config.request_budget_per_catalog_page,
+        )
+    return config.request_budget
+
+
+def _count_requests_made(conn: sqlite3.Connection, run_id: str) -> int:
+    """Per-app requests already stored for the run by earlier invocations.
+
+    Every request the rate limiter counts leaves exactly one stored payload, so
+    the stored rows of the three per-app sources equal the budget already spent.
+
+    Args:
+        conn: An open storage connection.
+        run_id: The run being acquired.
+
+    Returns:
+        The number of stored appdetails, review and SteamSpy-detail payloads.
+    """
+    return sum(
+        len(read_fetched_appids(conn, run_id, source))
+        for source in ("steam_appdetails", "steam_reviews", "steamspy_appdetails")
+    )
+
+
+def _create_rate_limiter(config: AcquisitionConfig, request_budget: int) -> RateLimiter:
     """Create a rate limiter for the run.
 
     Args:
         config: Acquisition config.
+        request_budget: Requests this invocation may still make.
 
     Returns:
-        A RateLimiter instance with the configured limits.
+        A RateLimiter instance with the configured interval and the given budget.
     """
     # Compute interval from steam_requests_per_minute
     interval_seconds = 60.0 / config.steam_requests_per_minute
     return RateLimiter(
         interval_seconds=interval_seconds,
-        request_budget=config.request_budget,
+        request_budget=request_budget,
     )
 
 
