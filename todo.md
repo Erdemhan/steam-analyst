@@ -1,6 +1,6 @@
 # TODO
 
-Items recorded for later. None of these are started.
+Items 1, 3, 4, 5, 7, 8 and 9 are done, items 2 and 6 are largely done. What is left is optional (see their Status lines).
 
 ## 1. Make the complexity weights user-adjustable (done, commit 20ea092)
 
@@ -12,7 +12,7 @@ Items recorded for later. None of these are started.
   - Whether the overridden weights are stored with the run so that results remain reproducible.
   - FORMULATION.md is user-locked, so the defaults stay there and overrides must not modify it.
 
-## 2. Archetype labels are ambiguous (mostly done, commit 2a8d954)
+## 2. Archetype labels are ambiguous (done apart from an optional label refinement)
 
 - Observed on a 1000-game scan: an archetype reported as "Action, Multiplayer, Singleplayer" is unclear.
   It is not evident whether it means single-player only, multiplayer only, or games that support both.
@@ -55,7 +55,7 @@ Items recorded for later. None of these are started.
 - Status: cause confirmed (the second report write replaced the coarse counts with zeros) and fixed; new runs keep both
   the coarse-filter and release-date counts. Reports already stored for earlier runs keep the old zeros.
 
-## 6. Too few recent games in the sample for the opportunity matrix (partly addressed)
+## 6. Too few recent games in the sample for the opportunity matrix (addressed; no better data source exists within ADR-003)
 
 - On run 20261003T162937824Z-28423c (3000 SteamSpy catalog apps, 713 candidates, 285 simple-subset games) only
   29 simple-subset games were released within the trailing window `W = 24` months, so at most 3 archetypes can

@@ -291,7 +291,7 @@ for `@module-planner`.
 |---|---|---|
 | `PipelineStage` | `StrEnum` | Exactly `ACQUISITION = "acquisition"`, `ENRICHMENT = "enrichment"`, `ANALYSIS = "analysis"`. Declaration order is execution order, so `list(PipelineStage)` *is* the pipeline. Values are byte-identical to the `run_events.stage` / `run_stages.stage` strings. |
 | `RUN_LEVEL_STAGE` | constant | `"pipeline"`. The `run_events.stage` value for run-level records (preflight, run started, run finished, cancellation requested). Deliberately not an enum member, because it is not executable and must never reach `run_stages`. |
-| `PipelineConfig` | dataclass | `start_stage: PipelineStage = ACQUISITION`, `max_catalog_pages: int \| None = None`, `request_budget_override: int \| None = None`, `notes: str \| None = None`. Serialized into `runs.config_json`. |
+| `PipelineConfig` | dataclass | `start_stage: PipelineStage = ACQUISITION`, `max_catalog_pages: int \| None = None`, `request_budget_override: int \| None = None`, `complexity_weights_override: dict[str, float] \| None = None`, `notes: str \| None = None`. Serialized into `runs.config_json`. |
 | `PipelineResult` | dataclass | `run_id`, `status`, `stages_run`, the three stage reports (nullable), timestamps, `duration_seconds`, `error_message`. |
 | `run_pipeline` | function | `(conn, run_id, config, *, settings=None, cancel_token=None) -> PipelineResult`. Synchronous, on the caller's thread, using the caller's connection. Records terminal status, then re-raises. |
 | `start_pipeline_async` | function | `(db_path: Path, config, *, settings=None) -> str`. Creates the run row on the calling thread, starts a worker, returns `run_id` immediately. Never takes or returns a connection. |
@@ -303,12 +303,16 @@ for `@module-planner`.
 | `PipelineError`, `PipelineCancelled`, `PreflightError` | exceptions | See the status mapping below. |
 
 **`PipelineConfig` scope.** It carries only what varies per run *and* is not a
-formulation parameter. Everything in `FORMULATION.md` reaches the pipeline through
+formulation parameter, with one deliberate exception: `complexity_weights_override`
+(ADR-019). Everything else in `FORMULATION.md` reaches the pipeline through
 `config/parameters.toml` and is not settable here or from the UI. `start_stage` drives
 both resume and a deliberate stage re-run after a parameter change.
 `max_catalog_pages` is the smoke-test limiter already present in
-`acquisition.fetch_steamspy_catalog`. `request_budget_override` supersedes
-`AcquisitionConfig.request_budget` when set. `notes` populates the existing
+`acquisition.fetch_steamspy_catalog`. `request_budget_override` is the run's total
+request budget when set; otherwise the budget is `AcquisitionConfig.request_budget`,
+raised to `request_budget_per_catalog_page` times `max_catalog_pages` when the pages
+are limited. Requests stored by earlier invocations of the same run are subtracted, so
+a resume does not get a fresh budget. `notes` populates the existing
 `runs.notes` column. No `stop_after_stage` field exists, because nothing needs it:
 re-running enrichment after a formula change implies re-running analysis anyway.
 
@@ -724,6 +728,26 @@ one full rerun.
   thread or touches the network. This is a solo-developer local tool, so the decision is
   deliberately small: no auth, no theming layer, no custom components, no router
   abstraction.
+
+### ADR-019: Per-run override of the complexity weights
+
+- **Context**: The ten complexity weights of `FORMULATION.md` §4 are locked, but a user
+  may want to see how the simple subset changes under a different emphasis, for example
+  more weight on the RAM requirement.
+- **Decision**: `PipelineConfig.complexity_weights_override` holds the weights a run
+  changes. `config.resolve_complexity_weights` merges them over the locked defaults and
+  rescales all ten to sum to 1. `run_pipeline` replaces the enrichment weights with the
+  result, logs a warning event, and derives the run's `parameters_version` from the base
+  version and the effective weights (`config.effective_parameters_version`). The
+  override is stored in `runs.config_json`, survives `resume_run`, and the report adds a
+  `custom_complexity_weights` caveat. The defaults in `FORMULATION.md` and
+  `parameters.toml` are never edited.
+- **Alternatives rejected**: editing `parameters.toml` per experiment loses the
+  defaults and breaks the consistency check against `FORMULATION.md`; requiring all ten
+  weights makes a one-weight experiment error-prone.
+- **Consequences**: Runs with different weights have different simple subsets and are
+  not comparable with default runs, so they are marked as such. The normalization bounds
+  and the tag distance threshold do not depend on the weights and stay frozen.
 
 ## Known Limitations
 
