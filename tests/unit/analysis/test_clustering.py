@@ -250,6 +250,7 @@ class TestClusterTags:
             max_tags_per_game=max_tags_per_game,
             tag_distance_threshold=tag_distance_threshold,
             clustering_linkage="average",
+            max_cluster_share=0.6,
         )
 
     def test_deterministic_across_repeated_calls(self):
@@ -612,6 +613,7 @@ def _params(**overrides):
         tag_distance_threshold=None,
         clustering_linkage="average",
         generic_tag_max_share=1.0,
+        max_cluster_share=0.6,
     )
     return replace(base, **overrides)
 
@@ -678,42 +680,48 @@ class TestGenericTagExclusion:
 
 
 class TestRunLocalThresholdSearch:
-    """Tests for the games-per-cluster threshold search."""
+    """The threshold search keeps the coarsest partition without a catch-all cluster."""
 
-    def test_picks_smallest_distance_maximizing_scorable_clusters(self):
+    def test_picks_last_distance_before_a_cluster_exceeds_the_cap(self):
         tags = _two_group_tags()
         frame = pd.DataFrame({"appid": range(1, 11)})
 
-        result = cluster_tags(tags, frame, _params())
+        result = cluster_tags(tags, frame, _params(max_cluster_share=0.6))
 
         assert result.params_used["threshold_source"] == "run_local_search"
         assert result.params_used["distance_threshold"] == 0.0
         sizes = result.assignments.groupby("cluster_id").size().tolist()
         assert sorted(sizes) == [5, 5]
 
-    def test_counts_games_not_tags(self):
-        rows = []
-        for appid in (1, 2):
-            rows += [(appid, f"T{i}", i) for i in range(1, 6)]
-        for appid in range(3, 10):
-            rows += [(appid, "U1", 1), (appid, "U2", 2)]
-        tags = pd.DataFrame(rows, columns=["appid", "tag", "rank"]).assign(votes=10)
-        frame = pd.DataFrame({"appid": range(1, 10)})
+    def test_a_looser_cap_allows_a_coarser_cut(self):
+        tags = _two_group_tags()
+        frame = pd.DataFrame({"appid": range(1, 11)})
 
-        result = cluster_tags(tags, frame, _params())
+        result = cluster_tags(tags, frame, _params(max_cluster_share=1.0))
 
-        biggest = result.assignments.groupby("cluster_id").size().max()
-        assert biggest == 7
+        assert result.params_used["distance_threshold"] == 1.0
+        assert result.assignments["cluster_id"].nunique() == 1
 
-    def test_falls_back_to_max_distance_when_no_cluster_reaches_min_size(self):
-        tags = pd.DataFrame(
-            {"appid": [1, 2, 3], "tag": ["A", "B", "C"], "votes": 10, "rank": 1}
-        )
-        frame = pd.DataFrame({"appid": [1, 2, 3]})
+    def test_falls_back_to_smallest_distance_when_every_cut_violates_the_cap(self):
+        tags = _two_group_tags()
+        frame = pd.DataFrame({"appid": range(1, 11)})
 
-        result = cluster_tags(tags, frame, _params())
+        result = cluster_tags(tags, frame, _params(max_cluster_share=0.1))
 
-        assert result.params_used["threshold_source"] == "run_local_search_fallback_max"
+        assert result.params_used["threshold_source"] == "run_local_search_fallback_min"
+        assert result.params_used["distance_threshold"] == 0.0
+
+    def test_result_does_not_depend_on_release_dates(self):
+        tags = _two_group_tags()
+        today = pd.Timestamp.now()
+        frame = pd.DataFrame({
+            "appid": range(1, 11),
+            "release_date_parsed": [today - pd.DateOffset(years=9)] * 10,
+        })
+
+        result = cluster_tags(tags, frame, _params(max_cluster_share=0.6))
+
+        assert result.params_used["distance_threshold"] == 0.0
 
     def test_frozen_threshold_still_used_verbatim(self):
         tags = _two_group_tags()
@@ -723,6 +731,20 @@ class TestRunLocalThresholdSearch:
 
         assert result.params_used["threshold_source"] == "frozen"
         assert result.params_used["distance_threshold"] == 0.5
+
+    def test_coarser_cut_when_groups_share_a_bridging_tag(self):
+        rows = []
+        for appid in (1, 2, 3):
+            rows += [(appid, "P", 1), (appid, "Q", 2), (appid, "T", 3)]
+        for appid in (4, 5, 6):
+            rows += [(appid, "R", 1), (appid, "S", 2), (appid, "T", 3)]
+        tags = pd.DataFrame(rows, columns=["appid", "tag", "rank"]).assign(votes=10)
+        frame = pd.DataFrame({"appid": range(1, 7)})
+
+        tight = cluster_tags(tags, frame, _params(max_cluster_share=0.5))
+        loose = cluster_tags(tags, frame, _params(max_cluster_share=1.0))
+
+        assert tight.params_used["distance_threshold"] < loose.params_used["distance_threshold"]
 
 
 class TestClusterModeShares:
@@ -763,52 +785,3 @@ class TestClusterModeShares:
         assert result.excluded_generic_tags == ["Singleplayer"]
         shares = next(iter(result.cluster_mode_shares.values()))
         assert shares["Singleplayer"] == 0.8
-
-
-class TestThresholdSearchWindow:
-    """The threshold search counts only games released within the window."""
-
-    def _tags(self):
-        rows = []
-        for appid in (1, 2, 3):
-            rows += [(appid, "P", 1), (appid, "Q", 2), (appid, "T", 3)]
-        for appid in (4, 5, 6):
-            rows += [(appid, "R", 1), (appid, "S", 2), (appid, "T", 3)]
-        return pd.DataFrame(rows, columns=["appid", "tag", "rank"]).assign(votes=10)
-
-    def _search(self, countable):
-        from scipy.cluster.hierarchy import linkage
-        from scipy.spatial.distance import squareform
-
-        from steam_analyst.analysis.clustering import _search_threshold
-
-        tags = self._tags()
-        distance = compute_jaccard_tag_distance(tags)
-        Z = linkage(squareform(distance.values, checks=False), method="average")
-        return _search_threshold(Z, distance.index, tags, 3, countable)
-
-    def test_all_games_counted_prefers_fine_clusters(self):
-        threshold, _ = self._search(None)
-        assert threshold == 0.0
-
-    def test_out_of_window_games_force_a_coarser_cut(self):
-        threshold, source = self._search({1, 2, 4, 5})
-        assert source == "run_local_search"
-        assert threshold > 0.5
-
-    def test_no_games_in_window_falls_back_to_max_distance(self):
-        _, source = self._search(set())
-        assert source == "run_local_search_fallback_max"
-
-    def test_cluster_tags_uses_release_dates_when_present(self):
-        today = pd.Timestamp.now()
-        tags = self._tags()
-        frame = pd.DataFrame({
-            "appid": range(1, 7),
-            "release_date_parsed": [today, today, today - pd.DateOffset(years=5),
-                                    today, today, today - pd.DateOffset(years=5)],
-        })
-
-        result = cluster_tags(tags, frame, _params(min_cluster_size=3))
-
-        assert result.params_used["distance_threshold"] > 0.5

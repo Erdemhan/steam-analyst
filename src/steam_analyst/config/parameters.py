@@ -241,6 +241,7 @@ def validate_parameters(raw: dict[str, Any]) -> None:
         "min_tag_votes",
         "max_tags_per_game",
         "generic_tag_max_share",
+        "max_cluster_share",
         "opportunity_weights",
     ]
     for key in ana_required_keys:
@@ -259,6 +260,13 @@ def validate_parameters(raw: dict[str, Any]) -> None:
     if not (0 < gts <= 1):
         raise ParameterError(
             f"out of range (0,1]: analysis.generic_tag_max_share={gts}"
+        )
+
+    # Validate max_cluster_share is in (0, 1]
+    mcs = ana["max_cluster_share"]
+    if not (0 < mcs <= 1):
+        raise ParameterError(
+            f"out of range (0,1]: analysis.max_cluster_share={mcs}"
         )
 
     # Validate clustering_linkage is a known method
@@ -544,6 +552,7 @@ def load_parameters(path: Path) -> tuple:
         tag_distance_threshold=ana_raw.get("tag_distance_threshold"),  # Optional by design
         clustering_linkage=ana_raw["clustering_linkage"],
         generic_tag_max_share=ana_raw["generic_tag_max_share"],
+        max_cluster_share=ana_raw["max_cluster_share"],
     )
 
     return (acquisition_config, enrichment_params, analysis_params)

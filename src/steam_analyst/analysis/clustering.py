@@ -12,7 +12,6 @@ import pandas as pd
 from scipy.cluster.hierarchy import linkage, fcluster
 from scipy.spatial.distance import squareform
 
-from steam_analyst.analysis.scoring import _filter_to_windowed_releases
 from steam_analyst.config.settings import AnalysisParams
 
 
@@ -218,13 +217,11 @@ def cluster_tags(
              (frozen, comparable-across-runs case).
            - If it IS None (pre-freeze), perform a run-local threshold search:
              scan the distinct merge-distances in the linkage's distance column
-             (ascending) and pick the SMALLEST distance that maximizes the
-             number of clusters holding at least params.min_cluster_size
-             games released within the trailing window W after plurality-vote
-             assignment (the scoring rule of FORMULATION.md section 6). A frame
-             without a release_date_parsed column counts every game.
-           - If no distance yields such a cluster, fall back to the maximum
-             merge distance (one giant cluster).
+             (ascending) and pick the LARGEST distance reached before some
+             cluster first holds more than params.max_cluster_share of the
+             clustered games after plurality-vote assignment. If even the
+             smallest distance violates the cap, use the smallest distance
+             (source 'run_local_search_fallback_min').
         5. Assign each game to a cluster via plurality vote of its own tags'
            cluster memberships.
         6. Label every cluster via label_cluster.
@@ -320,20 +317,8 @@ def cluster_tags(
         threshold_source = "frozen"
     else:
         # Pre-freeze: run-local threshold search
-        countable_appids = None
-        if "release_date_parsed" in frame.columns:
-            windowed = _filter_to_windowed_releases(
-                frame,
-                pd.DataFrame({"appid": frame["appid"].unique(), "cluster_id": 0}),
-                params.trailing_window_months,
-            )
-            countable_appids = set(windowed["appid"]) if len(windowed) else set()
         distance_threshold, threshold_source = _search_threshold(
-            Z,
-            distance_df.index,
-            tags_filtered,
-            params.min_cluster_size,
-            countable_appids,
+            Z, distance_df.index, tags_filtered, params.max_cluster_share
         )
 
     # Perform flat clustering at the determined threshold
@@ -441,30 +426,29 @@ def _search_threshold(
     Z: np.ndarray,
     tag_names: np.ndarray | list,
     tags_filtered: pd.DataFrame,
-    min_cluster_size: int,
-    countable_appids: set | None = None,
+    max_cluster_share: float,
 ) -> tuple[float, str]:
     """Search for a run-local distance threshold.
 
     Scans the distinct merge-distances in the linkage matrix (ascending) and
-    picks the SMALLEST distance that maximizes the number of clusters holding
-    at least min_cluster_size countable games, where games are assigned to
-    clusters by plurality vote of their tags exactly as in cluster_tags.
+    returns the last one before the largest cluster first holds more than
+    max_cluster_share of the clustered games. Games are assigned to clusters by
+    plurality vote of their tags exactly as in cluster_tags. Larger distances
+    merge more tags, so this keeps the coarsest partition that still avoids one
+    catch-all cluster, and it does not favor ever finer partitions as the
+    sample grows.
 
     Args:
         Z: The linkage matrix from scipy.cluster.hierarchy.linkage.
         tag_names: The ordered tag names (index of the distance DataFrame).
         tags_filtered: Tag rows (columns appid, tag) that were clustered.
-        min_cluster_size: Minimum number of countable games for a cluster to be
-            scored.
-        countable_appids: Games that count toward min_cluster_size (those released
-            within the trailing window). None counts every game.
+        max_cluster_share: Largest allowed share of the clustered games held by
+            one cluster, in (0, 1].
 
     Returns:
         (distance_threshold, threshold_source) where threshold_source is
-        'run_local_search' if some distance yields a cluster of at least
-        min_cluster_size games, or 'run_local_search_fallback_max' otherwise
-        (degenerate/tiny candidate set case).
+        'run_local_search', or 'run_local_search_fallback_min' when even the
+        smallest merge distance violates the cap (degenerate/tiny sample).
     """
     distances = np.sort(np.unique(Z[:, 2]))
     n_tags = len(tag_names)
@@ -482,13 +466,7 @@ def _search_threshold(
         1.0,
     )
 
-    if countable_appids is None:
-        countable = np.ones(len(appids), dtype=bool)
-    else:
-        countable = np.array([appid in countable_appids for appid in appids])
-
-    best_count = 0
-    best_distance = None
+    last_within_cap = None
     for distance in distances:
         labels = fcluster(Z, t=distance, criterion="distance")
         n_clusters = int(labels.max())
@@ -496,14 +474,13 @@ def _search_threshold(
         membership[np.arange(n_tags), labels - 1] = 1.0
         # argmax returns the first maximum, i.e. the lowest cluster id on ties.
         assigned = (game_tag_counts @ membership).argmax(axis=1)
-        games_per_cluster = np.bincount(assigned[countable], minlength=n_clusters)
-        n_scorable = int((games_per_cluster >= min_cluster_size).sum())
-        if n_scorable > best_count:
-            best_count = n_scorable
-            best_distance = distance
+        largest_share = np.bincount(assigned, minlength=n_clusters).max() / len(appids)
+        if largest_share > max_cluster_share:
+            break
+        last_within_cap = distance
 
-    if best_distance is not None:
-        return float(best_distance), "run_local_search"
+    if last_within_cap is not None:
+        return float(last_within_cap), "run_local_search"
 
-    max_distance = float(distances[-1]) if len(distances) > 0 else 0.0
-    return max_distance, "run_local_search_fallback_max"
+    smallest = float(distances[0]) if len(distances) > 0 else 0.0
+    return smallest, "run_local_search_fallback_min"

@@ -172,6 +172,9 @@ class AnalysisParams:
             clustered games are excluded from clustering and from the
             plurality-vote game assignment (FORMULATION.md §6). In (0, 1];
             1.0 disables the exclusion. Locked value: 0.15.
+        max_cluster_share: Largest share of the clustered games one cluster may hold
+            when the pre-freeze run-local search picks tag_distance_threshold
+            (FORMULATION.md section 6). In (0, 1]. Locked value: 0.15.
     """
 
     simplicity_percentile: float
@@ -183,6 +186,7 @@ class AnalysisParams:
     tag_distance_threshold: float | None
     clustering_linkage: str
     generic_tag_max_share: float = 1.0
+    max_cluster_share: float = 1.0
 
 
 @dataclass(frozen=True)

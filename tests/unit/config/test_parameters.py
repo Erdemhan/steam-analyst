@@ -75,6 +75,7 @@ def create_minimal_valid_raw() -> dict[str, Any]:
             "min_tag_votes": 0,
             "max_tags_per_game": 20,
             "generic_tag_max_share": 0.15,
+            "max_cluster_share": 0.15,
             "opportunity_weights": {
                 "demand": 0.40,
                 "competition": 0.30,

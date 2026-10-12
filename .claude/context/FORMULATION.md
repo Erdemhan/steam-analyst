@@ -300,22 +300,25 @@ with at least 5 games released within `W`. Three changes follow.
    from the plurality-vote game assignment. The share is computed over the games of the
    simple subset that have at least one tag, before the `max_tags_per_game` cap.
    A game whose tags are all excluded receives no archetype.
-2. The pre-freeze threshold search picks the smallest merge distance that maximizes the
-   number of clusters holding at least `min_cluster_size` games released within `W` after
-   plurality-vote assignment, which is the rule below that decides whether a cluster is
-   scored. It previously counted member tags per cluster, which does not measure whether
-   a cluster can be scored.
+2. The pre-freeze threshold search picks the largest merge distance reached before one
+   cluster first holds more than `max_cluster_share = 0.15` of the clustered games after
+   plurality-vote assignment. It does not favor ever finer partitions as the sample grows,
+   which a rule maximizing the number of scorable clusters does (that rule gave a threshold
+   of 0.32 at W = 48 and 0.0 at W = 60 on run 20261003T204134704Z-d8d2b3). It previously
+   counted member tags per cluster, which does not measure how the games are spread.
 3. For each archetype the stored result also reports the share of its games that carry
    the Singleplayer, Multiplayer and Co-op tags (computed before the exclusion in (1)).
    These shares only describe an archetype and take no part in clustering or scoring.
 
 **Frozen threshold (run 20261003T162937824Z-28423c, 2026-10-03).** Distance-cut
-threshold = 0.9366572312 (run-local search under the rule above with W = 48), giving 70
-tag clusters (median 4 tags per cluster) of which 10 hold at least 5 games released
-within `W`. 108 of the 285 simple-subset games were released within `W` (2022-10 to
-2026-09) and 74 of them fall in those 10 archetypes. It supersedes the earlier value
-0.9444444444 (run 20260930T194128376Z-197441), which was derived under the previous
-method.
+threshold = 0.9366572312 (run-local search under the rule above), giving 70 tag clusters
+(median 4 tags per cluster) of which 10 hold at least 5 games released within `W = 48`.
+The largest cluster holds 10.5% of the 285 simple-subset games. 107 of those games were
+released within `W` (2022-10 to 2026-09) and 73 of them fall in those 10 archetypes. The
+same rule applied to run 20261003T204134704Z-d8d2b3 (3002 enriched games, 1201 in the
+simple subset) gives 0.9219 with 147 tag clusters and 17 scorable archetypes, which
+supports the frozen value. It supersedes the earlier value 0.9444444444 (run
+20260930T194128376Z-197441), which was derived under the previous method.
 
 ```
 D_k = z( median_{i∈k} S_i^mid  over releases in the trailing window W )
@@ -486,6 +489,7 @@ min_cluster_size = 5
 min_tag_votes = 0
 max_tags_per_game = 20
 generic_tag_max_share = 0.15
+max_cluster_share = 0.15
 
 # --- analysis: opportunity score (FORMULATION.md §6) ---
 [analysis.opportunity_weights]

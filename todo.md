@@ -76,7 +76,7 @@ Items recorded for later. None of these are started.
   - Using the appid as a proxy for release recency does not work: 2025 releases in the sample have a median appid of
     about 1.48M, and an appid floor of 2.3M would keep only 24% of the games released within `W`.
 
-## 7. Threshold search criterion degenerates as the sample grows
+## 7. Threshold search criterion degenerates as the sample grows (done)
 
 - The pre-freeze search picks the smallest merge distance that maximizes the number of clusters with at least
   `min_cluster_size` games released within `W` (FORMULATION §6 amendment of 2026-10-03). It prefers finer partitions
@@ -85,6 +85,9 @@ Items recorded for later. None of these are started.
   0.32 for W = 48 (381 tag clusters) and 0.0 for W = 60, while the frozen 0.9367 yields 18 well-sized archetypes.
 - Replace or bound the criterion (for example a cap on the number of tag clusters or a minimum within-cluster
   cohesion), then decide whether to re-freeze. Needs user approval since FORMULATION §6 is locked.
+- Status: the search now picks the largest merge distance reached before one cluster holds more than
+  `analysis.max_cluster_share = 0.15` of the clustered games. It reproduces the frozen 0.9367 on run 20261003T162937824Z-28423c
+  and gives 0.9219 on run 20261003T204134704Z-d8d2b3, so nothing was re-frozen.
 
 ## 8. Request budget does not scale with the scan size
 

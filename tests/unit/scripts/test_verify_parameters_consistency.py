@@ -101,6 +101,7 @@ min_cluster_size = 5
 min_tag_votes = 0
 max_tags_per_game = 20
 generic_tag_max_share = 0.15
+max_cluster_share = 0.15
 
 # --- analysis: opportunity score (FORMULATION.md §6) ---
 [analysis.opportunity_weights]
@@ -199,6 +200,7 @@ min_cluster_size = 5
 min_tag_votes = 0
 max_tags_per_game = 20
 generic_tag_max_share = 0.15
+max_cluster_share = 0.15
 
 # --- analysis: opportunity score (FORMULATION.md §6) ---
 [analysis.opportunity_weights]
@@ -305,6 +307,7 @@ min_cluster_size = 5
 min_tag_votes = 0
 max_tags_per_game = 20
 generic_tag_max_share = 0.15
+max_cluster_share = 0.15
 # Note: tag_distance_threshold is legitimately absent
 
 [analysis.opportunity_weights]
@@ -394,6 +397,7 @@ min_cluster_size = 5
 min_tag_votes = 0
 max_tags_per_game = 20
 generic_tag_max_share = 0.15
+max_cluster_share = 0.15
 
 [analysis.opportunity_weights]
 demand = 0.40

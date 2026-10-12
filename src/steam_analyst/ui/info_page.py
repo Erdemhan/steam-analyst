@@ -151,6 +151,7 @@ _PARAM_TR = {
     "analysis.min_tag_votes": "Analizde asgari etiket oyu",
     "analysis.max_tags_per_game": "Analizde oyun başına en fazla etiket",
     "analysis.generic_tag_max_share": "Kümelemeden çıkarılan genel etiket eşiği (oyunların payı)",
+    "analysis.max_cluster_share": "Eşik aramasında bir kümenin alabileceği en büyük oyun payı",
     "analysis.tag_distance_threshold": "Kümeleme mesafe eşiği",
     "analysis.opportunity_weights.demand": "Fırsat ağırlığı: talep",
     "analysis.opportunity_weights.competition": "Fırsat ağırlığı: rekabet",

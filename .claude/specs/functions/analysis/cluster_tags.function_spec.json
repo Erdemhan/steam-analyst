@@ -2,9 +2,9 @@
   "module": "analysis",
   "function_name": "cluster_tags",
   "file_path": "src/steam_analyst/analysis/clustering.py",
-  "description": "Implements FORMULATION.md section 6's locked clustering method: agglomerative hierarchical clustering over a Jaccard tag-distance matrix, no genre anchor, generic tags excluded, empirically-derived distance-cut threshold.",
+  "description": "Implements FORMULATION.md section 6's locked clustering method: agglomerative hierarchical clustering over a Jaccard tag-distance matrix, no genre anchor, generic tags excluded, empirically-derived distance-cut threshold chosen so that no cluster exceeds max_cluster_share.",
   "signature": "def cluster_tags(tags: pd.DataFrame, frame: pd.DataFrame, params: AnalysisParams) -> TagClusterResult",
-  "docstring": "Cluster tags into archetypes and assign games to them.\n\nArgs:\n    tags: The run's tag rows for the candidate set, pre-filtered to votes >= params.min_tag_votes.\n    frame: The enriched frame (used only to restrict tags to appids actually present in the candidate set, and available for any future archetype-level feature needs).\n    params: AnalysisParams.tag_distance_threshold (possibly None, pre-freeze), clustering_linkage.\n\nReturns:\n    A TagClusterResult.\n\nAlgorithm:\n    0. Drop every tag carried by more than params.generic_tag_max_share of the games in the candidate set (before the per-game cap), from both clustering and plurality-vote assignment. Share 1.0 disables this. The dropped tags are returned in TagClusterResult.excluded_generic_tags.\n    1. distance = compute_jaccard_tag_distance(tags).\n    2. Run scipy.cluster.hierarchy.linkage on the condensed form of `distance` with method=params.clustering_linkage (assumed 'average' per config.AnalysisParams' flagged judgment call).\n    3. Determine the distance cut: if params.tag_distance_threshold is not None, use it VERBATIM (do not re-derive) -- this is the frozen, comparable-across-runs case. If it IS None (pre-freeze, e.g. run 1 itself), perform a run-local threshold search: scan the distinct merge-distances in the linkage's own distance column (ascending) and pick the SMALLEST distance that maximizes the number of clusters holding at least params.min_cluster_size games released within the trailing window W after plurality-vote assignment (the scoring rule; a frame without release_date_parsed counts every game), falling back to the maximum merge distance, source 'run_local_search_fallback_max', if no distance yields such a cluster). This run-local search's resulting threshold is what a subsequent scripts/freeze_empirical_parameters.py run would examine to decide the value to actually freeze (this function does not write parameters.toml itself; that remains the dedicated script's job per ADR-012).\n    4. Assign each game to a cluster via plurality vote of its own tags' cluster memberships (see TagClusterResult's own spec for the tie rule).\n    5. Label every cluster via label_cluster.\n    6. Compute TagClusterResult.cluster_mode_shares: per cluster, the share of its assigned games carrying each of Singleplayer, Multiplayer and Co-op, from the tags before the generic-tag exclusion. Descriptive only.\n\nDeterminism: for a fixed (tags, frame, params) input, produces bit-identical output across repeated calls -- scipy's linkage/fcluster are deterministic given a fixed distance matrix and method, and this function introduces no randomness.\n",
+  "docstring": "Cluster tags into archetypes and assign games to them.\n\nArgs:\n    tags: The run's tag rows for the candidate set, pre-filtered to votes >= params.min_tag_votes.\n    frame: The enriched frame (used only to restrict tags to appids actually present in the candidate set, and available for any future archetype-level feature needs).\n    params: AnalysisParams.tag_distance_threshold (possibly None, pre-freeze), clustering_linkage.\n\nReturns:\n    A TagClusterResult.\n\nAlgorithm:\n    0. Drop every tag carried by more than params.generic_tag_max_share of the games in the candidate set (before the per-game cap), from both clustering and plurality-vote assignment. Share 1.0 disables this. The dropped tags are returned in TagClusterResult.excluded_generic_tags.\n    1. distance = compute_jaccard_tag_distance(tags).\n    2. Run scipy.cluster.hierarchy.linkage on the condensed form of `distance` with method=params.clustering_linkage (assumed 'average' per config.AnalysisParams' flagged judgment call).\n    3. Determine the distance cut: if params.tag_distance_threshold is not None, use it VERBATIM (do not re-derive) -- this is the frozen, comparable-across-runs case. If it IS None (pre-freeze, e.g. run 1 itself), perform a run-local threshold search: scan the distinct merge-distances in the linkage's own distance column (ascending) and pick the LARGEST distance reached before one cluster first holds more than params.max_cluster_share of the clustered games after plurality-vote assignment (if even the smallest distance violates the cap, use it, source 'run_local_search_fallback_min'). This run-local search's resulting threshold is what a subsequent scripts/freeze_empirical_parameters.py run would examine to decide the value to actually freeze (this function does not write parameters.toml itself; that remains the dedicated script's job per ADR-012).\n    4. Assign each game to a cluster via plurality vote of its own tags' cluster memberships (see TagClusterResult's own spec for the tie rule).\n    5. Label every cluster via label_cluster.\n    6. Compute TagClusterResult.cluster_mode_shares: per cluster, the share of its assigned games carrying each of Singleplayer, Multiplayer and Co-op, from the tags before the generic-tag exclusion. Descriptive only.\n\nDeterminism: for a fixed (tags, frame, params) input, produces bit-identical output across repeated calls -- scipy's linkage/fcluster are deterministic given a fixed distance matrix and method, and this function introduces no randomness.\n",
   "preconditions": [
     "params.clustering_linkage in {'single','complete','average'}",
     "tags is already filtered to votes >= params.min_tag_votes by the caller (run_analysis) or by this function itself if not already filtered -- MUST be filtered before compute_jaccard_tag_distance is called either way"
@@ -82,22 +82,28 @@
       "expected": "clustered tags == the specific tags"
     },
     {
-      "name": "test_picks_smallest_distance_maximizing_scorable_clusters",
-      "description": "Two disjoint 5-game groups give threshold 0.0 and two 5-game clusters.",
-      "inputs": {},
-      "expected": "distance_threshold == 0.0, cluster sizes [5, 5]"
-    },
-    {
       "name": "test_shares_use_tags_from_before_generic_exclusion",
       "description": "A tag excluded as generic still contributes to cluster_mode_shares.",
       "inputs": {},
       "expected": "Singleplayer share == 0.8"
     },
     {
-      "name": "test_out_of_window_games_force_a_coarser_cut",
-      "description": "Games released outside the trailing window do not count toward min_cluster_size in the threshold search.",
+      "name": "test_picks_last_distance_before_a_cluster_exceeds_the_cap",
+      "description": "Two disjoint 5-game groups with cap 0.6 give threshold 0.0 and two 5-game clusters.",
       "inputs": {},
-      "expected": "threshold > 0.5 when games 3 and 6 are out of window"
+      "expected": "distance_threshold == 0.0, cluster sizes [5, 5]"
+    },
+    {
+      "name": "test_falls_back_to_smallest_distance_when_every_cut_violates_the_cap",
+      "description": "A cap below every attainable share falls back to the smallest distance.",
+      "inputs": {},
+      "expected": "threshold_source == 'run_local_search_fallback_min'"
+    },
+    {
+      "name": "test_result_does_not_depend_on_release_dates",
+      "description": "The search ignores release dates.",
+      "inputs": {},
+      "expected": "same threshold with or without release_date_parsed"
     }
   ],
   "dependencies": [
