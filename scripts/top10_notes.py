@@ -1,101 +1,106 @@
-"""Hand-written commentary for the ten selected games, keyed by Steam appid.
+"""Hand-written commentary (Turkish, report text) for the ten selected games, keyed by Steam appid.
 
 Every observation restates a number from the stored run or a plain reading of it. Remarks that
 draw on outside knowledge are marked as such. Wording is hedged on purpose: the data is a single
-scan and the unit estimates are review-based.
+scan and the unit estimates are review-based. The notes belong to the analysis version with
+parameters_version e5e095876f70 and must be rewritten if the selection changes.
 """
 from __future__ import annotations
 
 GAME_NOTES: dict[int, dict[str, object]] = {
+    1671210: {  # DELTARUNE
+        "observations": [
+            "Havuzun en yüksek tahmini net gelirine (yaklaşık $56.4M) ve en yüksek E değerine sahip. Tahmini 3.22M adedi Funny arketipinin medyanının (62,505 adet) yaklaşık 51 katı, yani arketipin tipik bir üyesi değil.",
+            "$24.99 fiyatla havuzun 99. yüzdeliğinde, 87,082 yorumla (%98.3 olumlu) yorum sayısında birinci. Orta tahmin SteamSpy bandının (1M ile 2M) üzerinde, dolayısıyla gelir olduğundan yüksek olabilir.",
+            "C değeri 0.307 ile havuzda 84. yüzdelikte, seçimin en yüksek C değeri ve basit alt küme eşiğinin (0.322) hemen altında. Başarım sayısı saklanan veride eksikti ve tahmin edilerek (imputed) dolduruldu.",
+            "Geliştiricinin saklanan veride bir başka başlığı var (dev_title_count = 1). Genel bilgiye göre bu, geliştiricinin daha önce çok büyük bir kitleye ulaşmış bir oyunun devamı. Veri önceden var olan kitlenin payını ayıramıyor, ancak bu sonuca katkıda bulunmuş olabilir.",
+            "En çok oy alan tag'ler Story Rich (1,715 oy), Great Soundtrack, Pixel Graphics, Funny ve RPG. Arketipin etiket tag'lerinden yalnızca Funny'yi taşıyor.",
+        ],
+        "reading": "Mevcut bir kitlesi olmayan küçük bir ekip için doğrudan bir şablon olması olası değil. Listedeki toplamları ve sıralamayı belirgin biçimde yukarı çekiyor, bu yüzden özetteki toplamlar bu oyun olmadan da okunmalı (§6).",
+    },
     2231450: {  # Pizza Tower
         "observations": [
-            "It has the largest estimated net revenue of the 76-game pool (about $21.3M) at a C of 0.237, which is the 43rd percentile and not the low end. The position comes from volume and not from a very low complexity score.",
-            "Its 2.28M estimated units are about 27 times the median of the Comedy archetype (84,550 units). The archetype's demand score is a median and does not describe a typical member, so this title behaves as an outlier inside its archetype.",
-            "The Boxleiter mid estimate lies above the SteamSpy owner band (1M to 2M), so the revenue figure may be overstated.",
-            "The most-voted tags are Great Soundtrack (980 votes), 2D Platformer, Fast-Paced, Cartoony and Funny. The data cannot separate the contribution of audio, art style and gameplay to its reception.",
-            "The price of $13.39 is at the 88th percentile of the pool and the game still ranks first in review count, which may suggest that demand for it was not strongly price-limited.",
+            "Havuzun ikinci en yüksek tahmini net gelirine (yaklaşık $21.3M) sahip ve C değeri 0.237. Havuzda 32. yüzdelik, yani düşük uçta değil. Konumu çok düşük bir karmaşıklık skorundan değil, hacimden geliyor.",
+            "Tahmini 2.28M adedi, Funny arketipinin medyanının (62,505 adet) yaklaşık 36 katı. Arketipin talep skoru bir medyan olduğu için tipik bir üyeyi anlatmıyor.",
+            "Boxleiter orta tahmini SteamSpy sahip bandının (1M ile 2M) üzerinde kalıyor, bu yüzden gelir rakamı olduğundan yüksek olabilir.",
+            "En çok oy alan tag'ler Great Soundtrack (980 oy), 2D Platformer, Fast-Paced, Cartoony ve Funny. Veri, müziğin, sanat stilinin ve oynanışın oyunun karşılanmasındaki payını ayıramıyor.",
+            "$13.39 fiyatı havuzun 87. yüzdeliğinde ve oyun yine de yorum sayısında üst yüzdelikte (99.). Bu, oyuna olan talebin fiyatla güçlü biçimde sınırlanmamış olabileceğini düşündürüyor.",
         ],
-        "reading": "It may indicate that a stylized 2D platformer with a strong audio and visual identity can reach a large audience at a mid price. As a template it carries survivorship risk, because it is a single outlier of its archetype.",
+        "reading": "Güçlü bir ses ve görsel kimliği olan stilize bir 2D platform oyununun orta bir fiyatla geniş bir kitleye ulaşabileceğini gösteriyor olabilir. Kendi arketipinde medyanın çok üzerinde kaldığı için şablon olarak alınırsa hayatta kalma yanlılığı riski taşıyor.",
     },
     813230: {  # ANIMAL WELL
         "observations": [
-            "The 35 MB install size is the 1st percentile of the pool and is the main reason for its low C of 0.162. This probably does not reflect production effort, because install size also depends on how assets are generated and compressed.",
-            "At $17.49 it is at the 93rd percentile of price, with 13,049 reviews and 95.3% positive. A premium price was therefore compatible with a strong reception in this archetype.",
-            "The mid estimate of 652k units is above the SteamSpy band (200k to 500k), so the true figure may be closer to the band.",
-            "It is published by Bigmode and is not self-published. It carries only one of the three label tags of its archetype (Platformer), and its most-voted tags are Metroidvania, Exploration and Puzzle.",
-            "The Platformer archetype has 23 games and Ω = +0.17, the weakest positive score among the six archetypes except Point & Click.",
+            "35 MB kurulum boyutu havuzun 1. yüzdeliğinde ve 0.162'lik düşük C değerinin (havuzda 3. yüzdelik) ana nedeni. Kurulum boyutu varlıkların nasıl üretildiğine ve sıkıştırıldığına da bağlı olduğu için bu büyük olasılıkla üretim eforunu yansıtmıyor.",
+            "$17.49 ile fiyatta 94. yüzdelikte, 13,049 yorumla ve %95.3 olumlu. Yani bu arketipte premium bir fiyat güçlü bir karşılanmayla bağdaşmış.",
+            "652k adetlik orta tahmin SteamSpy bandının (200k ile 500k) üzerinde, dolayısıyla gerçek rakam banda daha yakın olabilir. Platformer arketipinin medyanının (43,845 adet) yaklaşık 15 katı.",
+            "Yayıncısı Bigmode, yani kendi yayıncısı değil. Arketipinin üç etiket tag'inden yalnızca birini (Platformer) taşıyor, en çok oy alan tag'leri Metroidvania, Exploration ve Puzzle.",
         ],
-        "reading": "The commercial result is clear in the data, but its C is the least trustworthy of the ten. It is better read as evidence that a premium-priced puzzle-platformer can sell well than as a low-effort template.",
+        "reading": "Ticari sonuç veride net, ancak C değeri on oyun içinde en az güvenilir olanı. Düşük eforlu bir şablondan çok, premium fiyatlı bir puzzle-platformer'ın iyi satabileceğinin kanıtı olarak okunması daha uygun.",
     },
-    2212330: {  # Your Only Move Is HUSTLE
+    1262350: {  # SIGNALIS
         "observations": [
-            "At $3.99 it has an estimated 1.56M units, and the mid estimate lies within the SteamSpy band (1M to 2M). This is the best corroborated of the three highest-ranked games, since the first two lie above their bands.",
-            "C is 0.161 (8th percentile of the pool). The game lists one language, 22 achievements and no DLC, and its categories include Online PvP and LAN PvP.",
-            "The most-voted tags are 2D Fighter, Turn-Based Strategy, Spectacle fighter and Sandbox. It combines two genres that are usually separate, and its archetype assignment rests on Hand-drawn (130 votes) and Cartoony (146 votes), which rank lower among its tags.",
-            "Online and local multiplayer modes may add networking and balancing work that the complexity score does not fully capture.",
+            "Geliştirici (rose-engine) ve yayıncı (Balor Games) farklı, yani kendi yayıncısı olan bir sonuç değil.",
+            "$13.99 fiyatla 21,517 yorumu (%96.8 olumlu) ve tahmini 1.08M adedi var. Orta tahmin SteamSpy bandının (1M ile 2M) içinde, bu yüzden en çok doğrulanan tahminlerden biri.",
+            "C değeri 0.239 (havuzda 34. yüzdelik). Kurulum boyutu 2 GB (havuzda 80. yüzdelik), 8 dil ve 13 başarım listeliyor.",
+            "En çok oy alan tag'ler Survival Horror (940 oy), Psychological Horror (855), Female Protagonist, Sci-fi ve Lovecraftian. Oyun yine de Mystery / Point & Click / Investigation arketipine atanmış ve bu arketipin etiket tag'lerinden yalnızca Mystery'yi (598 oy) taşıyor, dolayısıyla arketipe uyumu gevşek.",
+            "Tahmini adedi arketipin medyanının (6,100 adet) yaklaşık 176 katı. Arketipin Ω değeri (+0.15) bu oyunu anlatmıyor, çünkü oyun arketipin tipik bir üyesi değil.",
+            "Çıkış tarihi (2022-10-27) 48 aylık pencerenin başlangıcına (2022-10-03) çok yakın.",
         ],
-        "reading": "The low price and the large estimated volume may suggest a volume-driven pricing approach. The multiplayer component makes the effort for a small team uncertain.",
+        "reading": "Veri, tür kimliği net bir korku oyununun premium fiyatla büyük bir kitleye ulaşabileceğini düşündürüyor. Arketip skoru bu sonucun nedeni olarak okunmamalı.",
     },
-    2365810: {  # Pseudoregalia
+    2027330: {  # GoreBox
         "observations": [
-            "At $4.19 and with 14,066 reviews (97.1% positive) it has an estimated 703k units, within the SteamSpy band (500k to 1M).",
-            "C is 0.256. The minimum RAM requirement is 8 GB and the install size is 600 MB. The achievement count is missing in the stored data and was imputed.",
-            "It is a 3D platformer with Metroidvania, Parkour and Old School tags. Its only stored label tag of the Minimalist archetype is Surreal (160 votes), so the archetype fit is loose.",
-            "The Minimalist archetype holds exactly 5 games, which is the scoring floor, and its D of +2.04 rests on a median of five values.",
+            "$8.99 fiyatla 8,322 yorumu ve tahmini 416k adedi var. Orta tahmin SteamSpy bandının (500k ile 1M) altında, bu da yorum tabanlı rakamın temkinli olabileceğini düşündürüyor.",
+            "Olumlu yorum oranı %88.1 ile seçimin en düşüklerinden biri (havuzda 42. yüzdelik) ve %80 eşiğine en yakın oyunlardan biri.",
+            "C değeri 0.217. Tek dil, 24 başarım listeliyor, kategorileri yalnızca Single-player ve bir seviye düzenleyicisi içeriyor. Geliştirici ve yayıncı aynı (F2Games).",
+            "En çok oy alan tag'ler Gore (753 oy), Sandbox, Violent, Physics ve FPS. Yani oyun, tek bir mekanik fikir etrafında kurulu bir sandbox.",
+            "FPS / Difficult / Violent arketipi 9 oyun içeriyor ve +2.00'lık Ω değeriyle seçimdeki en yüksek skor. Bu skor, medyanı 74,250 adet olan dokuz oyuna dayanıyor, dolayısıyla küçük örneklem nedeniyle kırılgan.",
         ],
-        "reading": "The game may show that a low-priced 3D platformer can reach a large audience. The archetype it sits in has the thinnest evidence of the six.",
+        "reading": "Veri, tek bir fikri ve fiziği öne çıkaran düşük kapsamlı bir sandbox oyununun orta fiyatla büyük bir kitleye ulaşabileceğini düşündürüyor. Daha düşük olumlu oran, kitlenin geniş ama daha az memnun olduğuna işaret ediyor olabilir.",
     },
     1562700: {  # SANABI
         "observations": [
-            "The developer (WONDER POTION) and the publisher (NEOWIZ) differ, so this is not a self-published result.",
-            "The estimated 239k units are below the SteamSpy band (500k to 1M), which suggests that the review-based figure may be conservative or that the band overstates the audience.",
-            "It lists 11 languages and 21 achievements. The 1 GB install size is at the 58th percentile of the pool. C is 0.262.",
-            "Among its tags, Pixel Graphics, Story Rich and Cyberpunk have the most votes. It carries all three label tags of the Platformer archetype.",
+            "Geliştirici (WONDER POTION) ve yayıncı (NEOWIZ) farklı, yani bu kendi yayıncısı olan bir sonuç değil.",
+            "Tahmini 239k adet SteamSpy bandının (500k ile 1M) altında. Bu, yorum tabanlı rakamın temkinli olabileceğini ya da bandın kitleyi olduğundan büyük gösterdiğini düşündürüyor. Platformer arketipinin medyanının (43,845 adet) yaklaşık 5.5 katı.",
+            "11 dil ve 21 başarım listeliyor. 1 GB kurulum boyutu havuzun 48. yüzdeliğinde. C değeri 0.262.",
+            "Tag'ler arasında Pixel Graphics, Story Rich ve Cyberpunk en çok oyu alıyor. Platformer arketipinin üç etiket tag'inin üçünü de taşıyor.",
         ],
-        "reading": "It has a more conventional production profile than the games above, with localization and a publisher. It may be a less direct reference for a very small self-funded team.",
-    },
-    2487350: {  # Alex Jones: NWO Wars
-        "observations": [
-            "C is 0.155 (4th percentile of the pool) and the game lists one language. The achievement count is missing in the stored data and was imputed.",
-            "At $17.76 it has the highest price of the selection and an estimated 84.6k units, below the SteamSpy band (100k to 200k).",
-            "It is a 2D side-scrolling shooter with Conspiracy and America tags. The title refers to a public figure, and the data cannot separate audience that follows that figure from audience for the genre.",
-            "Only 1,691 reviews support its estimate, the smallest review base of the ten, so its ranking is the least stable.",
-        ],
-        "reading": "Its replicability may be limited if a significant share of demand depended on the associated public figure. The data cannot confirm this.",
+        "reading": "Yukarıdaki oyunlara göre daha geleneksel bir üretim profili var, yerelleştirme ve bir yayıncı içeriyor. Çok küçük, kendi kaynağıyla çalışan bir ekip için daha az doğrudan bir referans olabilir.",
     },
     824600: {  # HROT
         "observations": [
-            "At $6.79 it has 3,794 reviews (96.1% positive) and an estimated 190k units, which is about 5 times the median of the Retro archetype (35,372 units). The mid estimate sits just below the SteamSpy band (200k to 500k) and its low-to-high range (152k to 247k) overlaps it.",
-            "C is 0.185 (17th percentile of the pool). It lists 2 languages, 55 achievements, Steam Trading Cards and a long list of accessibility options.",
-            "The most-voted tags are Retro, FPS, Shooter and Boomer Shooter, so it sits in a defined niche whose audience identifies the genre by name.",
-            "Developer and publisher are the same name, which suggests a self-published release.",
+            "$6.79 fiyatla 3,794 yorumu (%96.1 olumlu) ve tahmini 190k adedi var. Bu, Retro arketipinin medyanının (36,100 adet) yaklaşık 5 katı. Orta tahmin SteamSpy bandının (200k ile 500k) hemen altında, düşük-yüksek aralığı (152k ile 247k) ise bandla kesişiyor.",
+            "C değeri 0.185 (havuzda 7. yüzdelik). 2 dil, 55 başarım, Steam Trading Cards ve uzun bir erişilebilirlik seçenekleri listesi var.",
+            "En çok oy alan tag'ler Retro, FPS, Shooter ve Boomer Shooter. Yani kitlesi türü adıyla tanıyan, tanımlı bir nişte duruyor.",
+            "Geliştirici ve yayıncı aynı isim, bu da kendi yayıncısı olduğu bir çıkışa işaret ediyor.",
         ],
-        "reading": "It is a compact retro shooter with a modest price, and the data may suggest that a clearly named niche can support a self-published release of this size.",
+        "reading": "Mütevazı fiyatlı, kompakt bir retro nişancı oyunu. Veri, açıkça adlandırılmış bir nişin bu büyüklükte kendi yayıncısı olan bir çıkışı destekleyebileceğini düşündürüyor.",
     },
     2637990: {  # Duck Detective
         "observations": [
-            "At $7.49 it has 4,840 reviews (95.0% positive) and an estimated 179k units, within the SteamSpy band (100k to 200k). That is about 18 times the median of the Point & Click archetype (9,725 units).",
-            "The Point & Click archetype has Ω = +0.11, the weakest positive score of the six, so the game is a strong member of a weakly supported archetype.",
-            "The tags include Detective, Investigation, Casual, Short (98 votes), Cute and Noir. A short length may keep scope small.",
-            "It lists three platforms, the only one of the ten to do so, and 19 Steam category entries, most of them accessibility and controller options. It has only 7 achievements and 4 languages.",
+            "$7.49 fiyatla 4,840 yorumu (%95.0 olumlu) ve tahmini 179k adedi var, bu SteamSpy bandının (100k ile 200k) içinde. Mystery / Point & Click arketipinin medyanının (6,100 adet) yaklaşık 29 katı.",
+            "Bu arketipin Ω değeri +0.15 ile seçimdeki beş arketip içinde en zayıf pozitif skor. Yani oyun, zayıf desteklenen bir arketipin güçlü bir üyesi.",
+            "Tag'ler arasında Detective, Investigation, Casual, Short (98 oy), Cute ve Noir var. Kısa süre, kapsamı küçük tutuyor olabilir.",
+            "On oyun içinde üç platform listeleyen tek oyun ve 19 Steam kategori girdisi var, çoğu erişilebilirlik ve kontrolcü seçeneği. Yalnızca 7 başarımı ve 4 dili var.",
         ],
-        "reading": "The data may suggest that a short, tightly scoped narrative game can reach a mid-sized audience. Its C is raised somewhat by the three-platform release.",
+        "reading": "Veri, kısa ve kapsamı sıkı tutulmuş bir anlatı oyununun orta ölçekli bir kitleye ulaşabileceğini düşündürüyor. Üç platformlu çıkış C değerini bir miktar yükseltiyor.",
     },
-    3107330: {  # Nodebuster
+    2121980: {  # Void Stranger
         "observations": [
-            "At $1.94 it has 10,648 reviews (97.2% positive) and an estimated 287k units, within the SteamSpy band (200k to 500k). The estimated net revenue of about $390k is the second smallest of the ten, so its E rank is lifted mainly by the lowest C of the selection (0.139, 1st percentile of the pool).",
-            "It is a clicker and idle game (Clicker, Idler, Strategy, Casual). It lists one language and a 100 MB install size.",
-            "It shares the Minimalist archetype with Pseudoregalia although the two games have little in common in design. The archetype is a cluster of similar tag sets and not a design lineage.",
+            "Geliştirici ve yayıncı aynı (System Erasure). $11.99 fiyatla 2,833 yorumu (%91.0 olumlu) ve tahmini 105k adedi var. Orta tahmin SteamSpy bandının (100k ile 200k) alt sınırında.",
+            "Yalnızca 1 başarım listeliyor ve 2 dili var. C değeri 0.217 (havuzda 23. yüzdelik).",
+            "En çok oy alan tag'ler Mystery, Puzzle, Sokoban ve Adventure. Oyun FPS / Difficult / Violent arketipine atanmış ancak bu arketipin etiket tag'lerinden yalnızca Difficult'ı (24 oy) taşıyor, dolayısıyla atama gevşek ve oyun, arketipin dayandığı nişancı oyunlarına benzemiyor.",
+            "Tahmini adedi arketipin medyanının (74,250 adet) yaklaşık 1.4 katı, yani arketipin tipik bir üyesi. E değeri düşük C ve $12 fiyattan geliyor, hacimden değil.",
         ],
-        "reading": "It may suggest that a very low-price, low-scope game can still reach a large number of buyers. The absolute revenue is small, so it points to a different business outcome than the games above.",
+        "reading": "Arketip etiketi bu oyun için bilgi vermiyor. Oyunun kendi verisi, bir bulmaca-gizem oyununun mütevazı ama pozitif bir sonuç verebileceğini düşündürüyor.",
     },
-    1889040: {  # Birth
+    2160220: {  # Shipwrecked 64
         "observations": [
-            "At $4.94 it has 2,639 reviews (96.8% positive) and an estimated 97.6k units, below the SteamSpy band (200k to 500k). Its estimated net revenue of about $338k is the smallest of the ten.",
-            "C is 0.263 (61st percentile of the pool) with a 2 GB install size, which is the 86th percentile of the pool. The RAM requirement was imputed.",
-            "The most-voted tags are Point & Click, Surreal, Puzzle, Relaxing and Hidden Object. It carries Stylized (110 votes) and Hand-drawn (108 votes) of its archetype's label tags.",
-            "The Stylized archetype has 6 games and its median is 39,617 units, so Birth is about 2.5 times the median.",
+            "Geliştirici (Squeaks D'Corgeh) ve yayıncı (Cogware Games) farklı. $7.99 fiyatla 2,179 yorumu (%95.0 olumlu) ve tahmini 80.6k adedi var. Orta tahmin SteamSpy bandının (200k ile 500k) altında.",
+            "C değeri 0.246 (havuzda 41. yüzdelik) ile 2 GB kurulum boyutu (80. yüzdelik) ve 8 GB RAM gereksinimi var. Tek dil ve 16 başarım listeliyor.",
+            "En çok oy alan tag'ler Horror, Exploration, Puzzle ve Psychological Horror. Retro arketipinin etiket tag'lerinden yalnızca 1990's'u (146 oy) taşıyor, bu yüzden arketipe uyumu kısmi.",
+            "Tahmini adedi Retro arketipinin medyanının (36,100 adet) yaklaşık 2.2 katı. Tahmini net geliri yaklaşık $451k ile seçimdeki en küçük.",
         ],
-        "reading": "It is on the list because of the two-games-per-archetype rule and carries the weakest evidence of the ten. It should be read as a modest, low-risk result.",
+        "reading": "On oyun içinde en zayıf kanıtı taşıyor ve listede arketip başına iki oyun kuralı sayesinde yer alıyor. Mütevazı bir sonuç olarak okunmalı.",
     },
 }

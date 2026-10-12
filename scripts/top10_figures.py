@@ -59,20 +59,16 @@ def _save(fig, out: Path, name: str) -> Path:
 
 # (dx, dy, ha) label offsets in points for crowded areas of the archetype map.
 MAP_OFFSETS = {
-    "Retro": (-8, 6, "right"), "Platformer": (8, 8, "left"), "Point & Click": (-9, 7, "right"),
-    "Combat": (9, -12, "left"), "Physics": (10, 12, "left"), "Local Multiplayer": (-4, -13, "left"),
-    "Utilities": (-10, 5, "left"), "FPS": (8, -12, "left"), "Character Customization": (10, -12, "left"),
-    "Tactical": (8, 4, "left"), "Female Protagonist": (6, -14, "left"),
+    "Retro": (-8, 6, "right"), "Platformer": (8, 8, "left"), "Combat": (9, -12, "left"),
+    "Survival": (6, -14, "left"), "FPS": (9, 4, "left"), "Female Protagonist": (6, -14, "left"),
+    "Sexual Content": (8, 4, "left"),
 }
-
+# Overlapping grey bubbles in the lower-left corner; named in the figure note instead.
+MAP_UNLABELLED = {"Tactical", "Character Customization"}
 
 # (dx, dy, ha) label offsets by selection rank for the complexity/revenue scatter.
-CX_OFFSETS = {6: (-7, 6, "right"), 7: (0, -14, "center"), 8: (7, 6, "left"), 5: (7, -12, "left"),
-              4: (-7, 6, "right"), 9: (7, 5, "left")}
-
-
-# Overlapping grey bubbles in the lower-left corner; named in the figure note instead.
-MAP_UNLABELLED = {"Physics", "Local Multiplayer", "Utilities", "FPS", "Character Customization"}
+CX_OFFSETS = {1: (-8, -3, "right"), 4: (-7, 6, "right"), 7: (-8, -3, "right"), 8: (0, -15, "center"),
+              9: (8, -2, "left")}
 
 
 def archetype_colors(d: ReportData) -> dict[int, str]:
@@ -90,7 +86,7 @@ def fig_funnel(d: ReportData, out: Path) -> Path:
     ax.set_xlim(0, max(vals) * 1.12)
     ax.xaxis.set_major_formatter(FuncFormatter(_count))
     ax.grid(axis="y", visible=False)
-    ax.set_title("From the full run to the ten selected games")
+    ax.set_title("Run'ın tamamından seçilen on oyuna")
     return _save(fig, out, "fig01_selection_funnel.png")
 
 
@@ -113,15 +109,15 @@ def fig_opportunity_map(d: ReportData, out: Path) -> Path:
         ax.annotate(f"{lab} ({r.opportunity_score:+.2f})", (r.competition_z, r.demand_z),
                     xytext=(dx, dy), textcoords="offset points", fontsize=7.5, ha=ha,
                     color=INK if selected else INK2, zorder=4)
-    ax.set_xlabel("Competition density K (z-score, lower is better)")
-    ax.set_ylabel("Demand D (z-score of median estimated sales)")
-    ax.set_title("Archetype map: demand against competition")
-    fig.text(0.01, -0.03, "Bubble area = games in archetype. Coloured = archetypes with a selected game. "
-             "Label shows the first label tag and Ω.\n"
-             "Unlabelled lower-left bubbles: Physics, Local Multiplayer, Utilities, FPS, Character Customization.",
+    ax.set_xlabel("Rekabet yoğunluğu K (z-skoru, düşük daha iyi)")
+    ax.set_ylabel("Talep D (medyan tahmini satışın z-skoru)")
+    ax.set_title("Arketip haritası: talep ve rekabet")
+    fig.text(0.01, -0.03, "Balon alanı = arketipteki oyun sayısı. Renkli = seçilen oyun içeren arketipler. "
+             "Etiket, ilk etiket tagini ve Ω değerini gösterir.\n"
+             "Etiketsiz sol alt balonlar: " + ", ".join(sorted(MAP_UNLABELLED)) + ".",
              fontsize=7.5, color=INK2)
-    ax.text(-0.02, 0.97, "high demand,\nlow competition", transform=ax.transAxes, fontsize=8,
-            color=POS, va="top", ha="left", style="italic")
+    ax.text(0.99, 0.97, "sol üst: yüksek talep,\ndüşük rekabet", transform=ax.transAxes, fontsize=8,
+            color=POS, va="top", ha="right", style="italic")
     ax.set_xlim(-1.1, 3.4)
     return _save(fig, out, "fig02_archetype_map.png")
 
@@ -133,7 +129,7 @@ def fig_complexity_revenue(d: ReportData, out: Path) -> Path:
     rest = pool[~pool["appid"].isin(top_ids)]
     fig, ax = plt.subplots(figsize=(8.6, 5.6))
     ax.scatter(rest["complexity_score"], rest["estimated_revenue_net_usd"], s=22, color=MUTED,
-               alpha=0.5, edgecolor="none", label="Other games in Ω > 0 archetypes")
+               alpha=0.5, edgecolor="none", label="Ω > 0 arketiplerdeki diğer oyunlar")
     for _, r in d.top.iterrows():
         ax.scatter(r.complexity_score, r.estimated_revenue_net_usd, s=70,
                    color=colors[int(r.cluster_id)], edgecolor=BG, linewidth=1.4, zorder=3)
@@ -142,9 +138,9 @@ def fig_complexity_revenue(d: ReportData, out: Path) -> Path:
                     xytext=(dx, dy), textcoords="offset points", fontsize=7.5, ha=ha, zorder=4)
     ax.set_yscale("log")
     ax.yaxis.set_major_formatter(FuncFormatter(_usd))
-    ax.set_xlabel("Complexity score C (lower is simpler)")
-    ax.set_ylabel("Estimated net revenue R_net (log scale)")
-    ax.set_title("Complexity against estimated net revenue")
+    ax.set_xlabel("Karmaşıklık skoru C (düşük daha basit)")
+    ax.set_ylabel("Tahmini net gelir R_net (log ölçek)")
+    ax.set_title("Karmaşıklık ve tahmini net gelir")
     return _save(fig, out, "fig03_complexity_vs_revenue.png")
 
 
@@ -164,12 +160,12 @@ def fig_sales_ranges(d: ReportData, out: Path) -> Path:
     ax.set_yticks(y, [f"{int(r['rank'])}. {_short(r['name'], 24)}" for _, r in t.iterrows()])
     ax.set_xscale("log")
     ax.xaxis.set_major_formatter(FuncFormatter(_count))
-    ax.set_xlabel("Units (log scale)")
+    ax.set_xlabel("Adet (log ölçek)")
     ax.grid(axis="y", visible=False)
-    ax.set_title("Review-based sales estimate against the SteamSpy owner band")
+    ax.set_title("Yorum tabanlı satış tahmini ve SteamSpy sahip bandı")
     ax.legend(handles=[
-        Line2D([0], [0], color=POS, lw=3.2, marker="o", label="Boxleiter low–high (dot = mid)"),
-        Line2D([0], [0], color=INK2, lw=3.2, alpha=0.55, label="SteamSpy owner band (low reliability)"),
+        Line2D([0], [0], color=POS, lw=3.2, marker="o", label="Boxleiter düşük–yüksek (nokta = orta)"),
+        Line2D([0], [0], color=INK2, lw=3.2, alpha=0.55, label="SteamSpy sahip bandı (düşük güvenilirlik)"),
     ], loc="lower right", fontsize=8)
     return _save(fig, out, "fig04_sales_vs_owners.png")
 
@@ -181,13 +177,13 @@ def fig_sales_per_month(d: ReportData, out: Path) -> Path:
     ax.barh([f"{int(r['rank'])}. {_short(r['name'], 24)}" for _, r in t.iterrows()], t["sales_per_month"],
             color=[colors[int(c)] for c in t["cluster_id"]], height=0.62)
     for i, (_, r) in enumerate(t.iterrows()):
-        ax.text(r.sales_per_month * 1.01, i, f"{r.sales_per_month:,.0f}  ({r.age_months:.0f} mo.)",
+        ax.text(r.sales_per_month * 1.01, i, f"{r.sales_per_month:,.0f}  ({r.age_months:.0f} ay)",
                 va="center", fontsize=8, color=INK)
     ax.set_xlim(0, t["sales_per_month"].max() * 1.25)
     ax.xaxis.set_major_formatter(FuncFormatter(_count))
     ax.grid(axis="y", visible=False)
-    ax.set_xlabel("Estimated mid sales divided by months since release (lifetime average, not a trend)")
-    ax.set_title("Average estimated units per month since release")
+    ax.set_xlabel("Tahmini orta satış / çıkıştan beri geçen ay (yaşam boyu ortalama, trend değil)")
+    ax.set_title("Çıkıştan beri aylık ortalama tahmini adet")
     return _save(fig, out, "fig05_sales_per_month.png")
 
 
@@ -195,14 +191,14 @@ def fig_profile_heatmap(d: ReportData, out: Path) -> Path:
     """Percentile of each game inside the 76-game pool (Ω > 0 archetypes, simple, in window)."""
     pool = d.pool
     metrics = [
-        ("complexity_score", "Complexity C (high = complex)", True),
-        ("price_usd", "Price", False),
-        ("review_count", "Reviews", False),
-        ("review_positive_pct", "Positive share", False),
-        ("estimated_sales_mid", "Est. sales", False),
-        ("estimated_revenue_net_usd", "Est. net revenue", False),
-        ("size_bytes", "Install size", False),
-        ("language_count", "Languages", False),
+        ("complexity_score", "Karmaşıklık C (yüksek = karmaşık)", True),
+        ("price_usd", "Fiyat", False),
+        ("review_count", "Yorum sayısı", False),
+        ("review_positive_pct", "Olumlu oran", False),
+        ("estimated_sales_mid", "Tahmini satış", False),
+        ("estimated_revenue_net_usd", "Tahmini net gelir", False),
+        ("size_bytes", "Kurulum boyutu", False),
+        ("language_count", "Dil sayısı", False),
     ]
     rows = []
     for _, r in d.top.iterrows():
@@ -221,8 +217,8 @@ def fig_profile_heatmap(d: ReportData, out: Path) -> Path:
     ax.grid(False)
     ax.spines[:].set_visible(False)
     cb = fig.colorbar(im, ax=ax, fraction=0.03, pad=0.02)
-    cb.set_label("Percentile in the 76-game pool", color=INK2)
-    ax.set_title("Where each selected game sits inside the pool")
+    cb.set_label(f"{len(pool)} oyunluk havuzdaki yüzdelik", color=INK2)
+    ax.set_title("Seçilen oyunların havuzdaki konumu")
     return _save(fig, out, "fig06_percentile_profile.png")
 
 
@@ -249,7 +245,7 @@ def fig_archetype_trends(d: ReportData, out: Path) -> Path:
                         textcoords="offset points", ha="center", fontsize=6.5, color=INK2)
     for ax in axes.ravel()[len(ids):]:
         ax.set_visible(False)
-    fig.suptitle("Median estimated sales per 4-month release sub-window (numbers = games in the sub-window)",
+    fig.suptitle("4 aylık çıkış alt pencerelerinde medyan tahmini satış (sayılar = alt penceredeki oyun sayısı)",
                  x=0.01, ha="left", fontsize=11, fontweight="bold")
     fig.tight_layout()
     return _save(fig, out, "fig07_archetype_trends.png")
@@ -261,16 +257,16 @@ def fig_price_sales(d: ReportData, out: Path) -> Path:
     for _, r in d.top.iterrows():
         ax.scatter(r.price_usd, r.estimated_sales_mid, s=r.estimated_revenue_net_usd / 6e4 + 25,
                    color=colors[int(r.cluster_id)], alpha=0.85, edgecolor=BG, linewidth=1.2)
-        dx, dy = {7: (-7, 8), 8: (8, -11), 6: (-7, 8)}.get(int(r["rank"]), (7, 5))
+        dx, dy = {1: (-14, -2), 7: (-7, 8), 8: (8, -11), 6: (-7, 8)}.get(int(r["rank"]), (7, 5))
         ax.annotate(f"{int(r['rank'])}. {_short(r['name'], 18)}", (r.price_usd, r.estimated_sales_mid),
                     xytext=(dx, dy), textcoords="offset points", fontsize=7.5,
                     ha="right" if dx < 0 else "left")
     ax.set_yscale("log")
     ax.yaxis.set_major_formatter(FuncFormatter(_count))
     ax.xaxis.set_major_formatter(FuncFormatter(lambda x, _: f"${x:g}"))
-    ax.set_xlabel("List price (USD)")
-    ax.set_ylabel("Estimated units, mid (log scale)")
-    ax.set_title("Price and estimated volume (bubble area = estimated net revenue)")
+    ax.set_xlabel("Liste fiyatı (USD)")
+    ax.set_ylabel("Tahmini adet, orta (log ölçek)")
+    ax.set_title("Fiyat ve tahmini hacim (balon alanı = tahmini net gelir)")
     return _save(fig, out, "fig08_price_vs_sales.png")
 
 
@@ -280,16 +276,16 @@ def fig_mode_shares(d: ReportData, out: Path) -> Path:
     x = np.arange(len(m))
     w = 0.26
     fig, ax = plt.subplots(figsize=(8.4, 3.8))
-    for k, (col, lab, c) in enumerate([("singleplayer_share", "Singleplayer", POS),
-                                       ("multiplayer_share", "Multiplayer", NEG),
+    for k, (col, lab, c) in enumerate([("singleplayer_share", "Tek oyunculu", POS),
+                                       ("multiplayer_share", "Çok oyunculu", NEG),
                                        ("coop_share", "Co-op", "#009E73")]):
         ax.bar(x + (k - 1) * w, m[col] * 100, w * 0.9, color=c, label=lab)
     ax.set_xticks(x, [_short(l.split(" / ")[0], 16) for l in m["label"]], rotation=15)
-    ax.set_ylabel("Share of archetype games (%)")
+    ax.set_ylabel("Arketip oyunlarının payı (%)")
     ax.grid(axis="x", visible=False)
     ax.legend(ncol=3, loc="upper right", fontsize=8)
     ax.set_ylim(0, 105)
-    ax.set_title("Player-mode composition of the six archetypes")
+    ax.set_title(f"{len(m)} arketipin oyuncu modu dağılımı")
     return _save(fig, out, "fig09_mode_shares.png")
 
 

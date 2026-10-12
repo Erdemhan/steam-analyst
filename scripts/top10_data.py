@@ -24,7 +24,7 @@ SIMPLE_PERCENTILE = 0.40
 MIN_POSITIVE_SHARE = 0.80
 MAX_PER_ARCHETYPE = 2
 TOP_N = 10
-SOFTWARE_CLUSTER_ID = 15  # "Utilities / Software / Design & Illustration", see todo.md item 9
+SOFTWARE_LABEL_PREFIX = "Utilities / Software"  # software-like cluster, see todo.md item 9
 
 
 @dataclass
@@ -44,6 +44,9 @@ class ReportData:
     simple_threshold: float
     window_start: pd.Timestamp
     outside_hits: pd.DataFrame  # strong E_i games in non-positive archetypes
+    parameters_version: str
+    software_removed: int  # games dropped because their archetype is the software-like cluster
+    last_stage_finished: str
 
 
 def _payload(con: sqlite3.Connection, kind: str):
@@ -107,7 +110,9 @@ def load(db_path: Path) -> ReportData:
         matrix[["cluster_id", "label", "opportunity_score", "demand_z", "competition_z", "simplicity_z"]],
         on="cluster_id",
     )
-    scored = scored[scored["cluster_id"] != SOFTWARE_CLUSTER_ID]
+    is_software = scored["label"].str.startswith(SOFTWARE_LABEL_PREFIX)
+    software_removed = int(is_software.sum())
+    scored = scored[~is_software]
     positive = scored[scored["opportunity_score"] > 0]
 
     paid = positive[positive["is_free"] == 0]
@@ -141,13 +146,13 @@ def load(db_path: Path) -> ReportData:
     ].sort_values("effort_adjusted_return", ascending=False)
 
     funnel = [
-        ("Enriched games in the run", len(g)),
-        ("Simple subset (C ≤ P40)", len(simple)),
-        ("Released within W = 48 months", len(in_window)),
-        ("In a scored archetype (software cluster removed)", len(scored)),
-        ("In an archetype with Ω > 0", len(positive)),
-        ("Paid, not Early Access, ≥ 80% positive", len(eligible)),
-        ("Final selection (≤ 2 per archetype)", len(top)),
+        ("Run'daki zenginleştirilmiş oyunlar", len(g)),
+        ("Basit alt küme (C ≤ P40)", len(simple)),
+        ("Son W = 48 ayda çıkmış", len(in_window)),
+        ("Puanlanmış arketipte", len(scored)),
+        ("Ω > 0 olan arketipte", len(positive)),
+        ("Ücretli, Early Access değil, ≥ %80 olumlu", len(eligible)),
+        ("Nihai seçim (arketip başına ≤ 2)", len(top)),
     ]
     return ReportData(
         run=run,
@@ -163,6 +168,11 @@ def load(db_path: Path) -> ReportData:
         simple_threshold=thr,
         window_start=window_start,
         outside_hits=neg.head(8),
+        parameters_version=str(g["parameters_version"].iloc[0]),
+        software_removed=software_removed,
+        last_stage_finished=str(con.execute(
+            "select max(finished_at) from run_stages where run_id=?", (RUN_ID,)
+        ).fetchone()[0]),
     )
 
 
