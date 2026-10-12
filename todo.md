@@ -102,8 +102,13 @@ Items recorded for later. None of these are started.
   `request_budget_per_catalog_page` (1500) times `max_catalog_pages`, minus the requests already stored for the run, so resumes
   no longer get a fresh budget. The new-analysis form's budget field (`request_budget_override`) had no effect before; it is applied now.
 
-## 9. Software-like archetype among games
+## 9. Software-like archetype among games (done)
 
 - The opportunity matrix of run 20261003T204134704Z-d8d2b3 contains "Utilities / Software / Design & Illustration"
   (5 games). All rows have `app_type = game`, so the coarse filter cannot separate such titles.
 - Check whether Steam's `type` or the genre/category fields can exclude non-game software without scraping.
+- Status: Steam types these apps as `game`, but their genres (Utilities, Animation & Modeling, Game Development, ...) mark them as
+  software. Enrichment now drops apps with any genre in `enrichment.exclusions.software_genres` (FORMULATION §0). On run
+  20261003T204134704Z-d8d2b3 this removed 35 of 3002 apps and the software archetype; the scored archetypes went from 18 to 14
+  because several 5-7 game clusters fell under the 5-game floor. Run 20261003T162937824Z-28423c, the source of the frozen threshold,
+  was left as it was.

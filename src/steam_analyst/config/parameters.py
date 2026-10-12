@@ -143,7 +143,7 @@ def validate_parameters(raw: dict[str, Any]) -> None:
     enr = raw["enrichment"]
 
     # Check for enrichment subsections
-    enr_subsections = ["boxleiter_multipliers", "genre_bucket_map", "revenue", "complexity_weights", "complexity_tags", "effort", "tag_extraction"]
+    enr_subsections = ["boxleiter_multipliers", "genre_bucket_map", "revenue", "complexity_weights", "complexity_tags", "effort", "tag_extraction", "exclusions"]
     for subsection in enr_subsections:
         if subsection not in enr:
             raise ParameterError(f"missing section: enrichment.{subsection}")
@@ -225,6 +225,16 @@ def validate_parameters(raw: dict[str, Any]) -> None:
     eff = enr["effort"]
     if "epsilon" not in eff:
         raise ParameterError("missing key: enrichment.effort.epsilon")
+
+    # Validate exclusions section
+    exclusions = enr["exclusions"]
+    if "software_genres" not in exclusions:
+        raise ParameterError("missing key: enrichment.exclusions.software_genres")
+    sg = exclusions["software_genres"]
+    if not isinstance(sg, list) or not all(isinstance(g, str) and g for g in sg):
+        raise ParameterError(
+            "enrichment.exclusions.software_genres must be a list of non-empty strings"
+        )
 
     # Validate tag_extraction section
     tag_ext = enr["tag_extraction"]
@@ -549,6 +559,7 @@ def load_parameters(path: Path) -> tuple:
         effort_epsilon=enr_raw["effort"]["epsilon"],
         tag_extraction_max_per_game=enr_raw["tag_extraction"]["max_per_game"],
         tag_extraction_min_votes=enr_raw["tag_extraction"]["min_votes"],
+        software_genres=tuple(enr_raw["exclusions"]["software_genres"]),
     )
 
     # Build AnalysisParams

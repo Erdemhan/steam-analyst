@@ -738,3 +738,42 @@ class TestRunEnrichment:
 
         # Should succeed with zero rows written
         assert report.rows_written >= 0  # May be 0 or 1 depending on filter
+
+
+def test_software_genre_rows_are_dropped_from_the_enriched_frame(basic_params, simple_catalog):
+    """A game-typed app with a software genre is dropped like a non-game."""
+    import dataclasses
+
+    def entry(appid, genres):
+        steamspy = {
+            "appid": appid, "name": f"App {appid}", "developer": "Dev",
+            "positive": 100, "negative": 10, "owners_low": 1000, "owners_high": 2000,
+            "price": 999, "tags": {},
+        }
+        details = {
+            "success": True,
+            "data": {
+                "type": "game", "name": f"App {appid}", "is_free": False,
+                "price_overview": {"final": 999},
+                "release_date": {"date": "Jan 15, 2023"},
+                "genres": [{"id": str(i), "description": g} for i, g in enumerate(genres)],
+            },
+        }
+        return steamspy, details
+
+    s100, d100 = entry(100, ["Action", "Indie"])
+    s101, d101 = entry(101, ["Indie", "Utilities"])
+    bundle = RawBundle(
+        run_id="test",
+        steamspy={100: s100, 101: s101},
+        steamspy_appdetails={100: {"appid": 100, "tags": {}}, 101: {"appid": 101, "tags": {}}},
+        appdetails={100: d100, 101: d101},
+        reviews={},
+    )
+    params = dataclasses.replace(basic_params, software_genres=("Utilities",))
+
+    frame, _ = build_enriched_frame(bundle, simple_catalog, params)
+    assert set(frame["appid"]) == {100}
+
+    without_rule, _ = build_enriched_frame(bundle, simple_catalog, basic_params)
+    assert set(without_rule["appid"]) == {100, 101}

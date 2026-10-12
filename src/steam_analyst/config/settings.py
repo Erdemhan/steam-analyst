@@ -132,6 +132,10 @@ class EnrichmentParams:
             entirely by enrichment.extract_tags, before analysis ever sees
             them. Locked value: 0. Deliberately a separate knob from
             AnalysisParams.min_tag_votes for the same reason as above.
+        software_genres: Steam genres that mark an app as software rather than a
+            game (for example Utilities or Game Development). Enrichment drops
+            every app that has at least one of them, so software tools never
+            enter the complexity percentile or the archetypes.
     """
 
     boxleiter_multipliers: dict[str, tuple[float, float, float]]
@@ -146,6 +150,7 @@ class EnrichmentParams:
     effort_epsilon: float
     tag_extraction_max_per_game: int
     tag_extraction_min_votes: int
+    software_genres: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

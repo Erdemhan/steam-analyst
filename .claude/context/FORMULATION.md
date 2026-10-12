@@ -43,6 +43,17 @@ publishers of the same scale. Matching is a case-insensitive substring match, so
 "Warner Bros Games" was shortened to "Warner Bros" (Steam writes "Warner Bros.
 Games", which the old entry never matched). The list remains non-exhaustive.
 
+**Software exclusion (user-approved 2026-10-12).** Steam types some software tools as
+`game`, so `type` alone cannot separate them. Enrichment drops every app whose Steam
+genres include at least one of the software genres listed in §8
+(`enrichment.exclusions.software_genres`): Utilities, Animation & Modeling, Design &
+Illustration, Audio Production, Video Production, Photo Editing, Web Publishing,
+Software Training and Game Development. `Education` is not on the list because genuine
+educational games carry it. On run 20261003T204134704Z-d8d2b3, 35 of the 3002 enriched
+apps carried one of these genres (for example RPG Maker MZ, Crosshair X, XSOverlay). The
+drop happens before the complexity percentile of §3a is computed, so these apps do not
+shift the simple-subset cutoff either.
+
 Original starting list (kept for reference): Electronic Arts,
 Ubisoft, Activision, Activision Blizzard, Take-Two Interactive, Rockstar Games, 2K,
 Bethesda Softworks, ZeniMax, Square Enix, Capcom, Sega, Bandai Namco, Konami, Sony
@@ -474,6 +485,13 @@ epsilon = 0.05
 # --- enrichment: tag extraction (pre-clustering table-size knobs, distinct
 # from analysis.min_tag_votes / analysis.max_tags_per_game below, which are
 # independently re-applied inside analysis.cluster_tags) ---
+[enrichment.exclusions]
+software_genres = [
+  "Utilities", "Animation & Modeling", "Design & Illustration", "Audio Production",
+  "Video Production", "Photo Editing", "Web Publishing", "Software Training",
+  "Game Development",
+]
+
 [enrichment.tag_extraction]
 max_per_game = 20
 min_votes = 0

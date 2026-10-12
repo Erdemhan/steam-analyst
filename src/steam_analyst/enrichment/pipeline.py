@@ -27,7 +27,12 @@ from steam_analyst.storage import (
 from steam_analyst.storage.types import TagRow
 
 from .errors import EnrichmentError
-from .parsing import parse_raw_bundle, normalize_features, extract_tags
+from .parsing import (
+    extract_tags,
+    normalize_features,
+    parse_raw_bundle,
+    software_excluded_appids,
+)
 from .features import compute_developer_catalog_size
 from .revenue import (
     map_genre_bucket,
@@ -138,7 +143,7 @@ def build_enriched_frame(
         return empty_frame, []
 
     # Step 1: Normalize raw features
-    frame = normalize_features(bundle)
+    frame = normalize_features(bundle, params.software_genres)
 
     # Step 2: Extract tags (using locked constants from EnrichmentParams)
     tag_rows = extract_tags(
@@ -394,10 +399,17 @@ def run_enrichment(
         dropped_by_reason = {}
         if rows_dropped > 0:
             # Count non-game rows by checking normalized frame
-            frame = normalize_features(bundle)
-            non_game_count = (~frame["is_game"]).sum()
-            if non_game_count > 0:
-                dropped_by_reason["non_game_app_type"] = int(non_game_count)
+            frame = normalize_features(bundle, params.software_genres)
+            non_game_count = int((~frame["is_game"]).sum())
+            software_count = len(
+                software_excluded_appids(bundle, params.software_genres)
+                & set(frame.index[frame["app_type"] == "game"])
+                & set(bundle.steamspy_appdetails)
+            )
+            if software_count > 0:
+                dropped_by_reason["software_genre"] = software_count
+            if non_game_count - software_count > 0:
+                dropped_by_reason["non_game_app_type"] = non_game_count - software_count
 
         # Compute imputation rates from complexity score computation
         imputation_rate_by_feature: dict[str, float] = {}
@@ -414,7 +426,7 @@ def run_enrichment(
                 "language_count",
             ]
 
-            frame = normalize_features(bundle)
+            frame = normalize_features(bundle, params.software_genres)
             frame["dev_title_count"] = compute_developer_catalog_size(frame, catalog)
             frame = frame[frame["is_game"] == True]
 

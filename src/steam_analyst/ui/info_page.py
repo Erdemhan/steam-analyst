@@ -153,6 +153,7 @@ _PARAM_TR = {
     "analysis.generic_tag_max_share": "Kümelemeden çıkarılan genel etiket eşiği (oyunların payı)",
     "analysis.max_cluster_share": "Eşik aramasında bir kümenin alabileceği en büyük oyun payı",
     "analysis.tag_distance_threshold": "Kümeleme mesafe eşiği",
+    "enrichment.exclusions.software_genres": "Oyun sayılmayan yazılım türleri (zenginleştirmede elenir)",
     "analysis.opportunity_weights.demand": "Fırsat ağırlığı: talep",
     "analysis.opportunity_weights.competition": "Fırsat ağırlığı: rekabet",
     "analysis.opportunity_weights.simplicity": "Fırsat ağırlığı: basitlik",

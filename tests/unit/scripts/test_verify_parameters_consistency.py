@@ -88,6 +88,13 @@ complexity_tags = ["Open World", "Multiplayer", "Physics", "Procedural Generatio
 [enrichment.effort]
 epsilon = 0.05
 
+[enrichment.exclusions]
+software_genres = [
+  "Utilities", "Animation & Modeling", "Design & Illustration", "Audio Production",
+  "Video Production", "Photo Editing", "Web Publishing", "Software Training",
+  "Game Development",
+]
+
 [enrichment.tag_extraction]
 max_per_game = 20
 min_votes = 0
@@ -187,6 +194,13 @@ complexity_tags = ["Open World", "Multiplayer", "Physics", "Procedural Generatio
 # --- enrichment: effort-adjusted return (FORMULATION.md §5) ---
 [enrichment.effort]
 epsilon = 0.05
+
+[enrichment.exclusions]
+software_genres = [
+  "Utilities", "Animation & Modeling", "Design & Illustration", "Audio Production",
+  "Video Production", "Photo Editing", "Web Publishing", "Software Training",
+  "Game Development",
+]
 
 [enrichment.tag_extraction]
 max_per_game = 20
@@ -296,6 +310,13 @@ complexity_tags = ["Open World", "Multiplayer", "Physics", "Procedural Generatio
 [enrichment.effort]
 epsilon = 0.05
 
+[enrichment.exclusions]
+software_genres = [
+  "Utilities", "Animation & Modeling", "Design & Illustration", "Audio Production",
+  "Video Production", "Photo Editing", "Web Publishing", "Software Training",
+  "Game Development",
+]
+
 [enrichment.tag_extraction]
 max_per_game = 20
 min_votes = 0
@@ -386,6 +407,13 @@ complexity_tags = ["Open World", "Multiplayer", "Physics", "Procedural Generatio
 
 [enrichment.effort]
 epsilon = 0.05
+
+[enrichment.exclusions]
+software_genres = [
+  "Utilities", "Animation & Modeling", "Design & Illustration", "Audio Production",
+  "Video Production", "Photo Editing", "Web Publishing", "Software Training",
+  "Game Development",
+]
 
 [enrichment.tag_extraction]
 max_per_game = 20

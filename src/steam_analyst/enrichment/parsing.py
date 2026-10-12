@@ -9,6 +9,7 @@ import json
 import re
 import sqlite3
 from dataclasses import dataclass
+from collections.abc import Collection
 from typing import Any
 
 import pandas as pd
@@ -111,6 +112,33 @@ def parse_ram_bytes(pc_requirements: Any) -> int | None:
             if size > 0:
                 return size
     return None
+
+
+def software_excluded_appids(
+    bundle: "RawBundle", software_genres: Collection[str]
+) -> set[int]:
+    """Appids whose Steam genres include at least one software genre.
+
+    Args:
+        bundle: Output of parse_raw_bundle.
+        software_genres: Genre names that mark an app as software, not a game.
+
+    Returns:
+        The appids of bundle.appdetails entries with a matching genre. Empty when
+        software_genres is empty.
+    """
+    excluded = set(software_genres)
+    if not excluded:
+        return set()
+    appids = set()
+    for appid, payload in bundle.appdetails.items():
+        genres = ((payload or {}).get("data") or {}).get("genres")
+        if not isinstance(genres, list):
+            continue
+        names = {g.get("description") for g in genres if isinstance(g, dict)}
+        if names & excluded:
+            appids.add(appid)
+    return appids
 
 
 def parse_is_early_access(genres: Any) -> bool:
@@ -223,11 +251,15 @@ def parse_raw_bundle(conn: sqlite3.Connection, run_id: str) -> RawBundle:
     )
 
 
-def normalize_features(bundle: RawBundle) -> pd.DataFrame:
+def normalize_features(
+    bundle: RawBundle, software_genres: Collection[str] = ()
+) -> pd.DataFrame:
     """Build the base feature frame from raw payloads.
 
     Args:
         bundle: Output of parse_raw_bundle.
+        software_genres: Genres that mark an app as software; such apps get
+            is_game False and are dropped by the pipeline.
 
     Returns:
         A DataFrame indexed by appid with columns for identity, price, review counts,
@@ -238,6 +270,7 @@ def normalize_features(bundle: RawBundle) -> pd.DataFrame:
     structure for density/competition analysis even if per-app details failed.
     """
     rows = []
+    software_appids = software_excluded_appids(bundle, software_genres)
 
     for appid in bundle.steamspy:
         steamspy_data = bundle.steamspy[appid]
@@ -265,7 +298,11 @@ def normalize_features(bundle: RawBundle) -> pd.DataFrame:
         # the release-date filter would still be scored and analyzed as valid
         # candidates.
         is_final_survivor = appid in bundle.steamspy_appdetails
-        is_game = (app_type == "game" and is_final_survivor) if appdetails_success else False
+        is_game = (
+            (app_type == "game" and is_final_survivor and appid not in software_appids)
+            if appdetails_success
+            else False
+        )
 
         # Price fields
         price_overview = appdetails_data.get("price_overview", {}) if appdetails_success else {}

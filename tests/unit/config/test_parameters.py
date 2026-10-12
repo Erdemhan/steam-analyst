@@ -67,6 +67,7 @@ def create_minimal_valid_raw() -> dict[str, Any]:
             },
             "effort": {"epsilon": 0.05},
             "tag_extraction": {"max_per_game": 20, "min_votes": 0},
+            "exclusions": {"software_genres": ["Utilities", "Game Development"]},
         },
         "analysis": {
             "simplicity_percentile": 0.40,
